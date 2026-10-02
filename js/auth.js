@@ -86,6 +86,7 @@ onForm("login-admin", async f => {
 
 /** Used by both apps. */
 export async function logout(sb) {
-  await sb.auth.signOut();
+  // local: logging out on one device must not kill the sessions open on the others
+  await sb.auth.signOut({ scope: "local" });
   location.reload();
 }

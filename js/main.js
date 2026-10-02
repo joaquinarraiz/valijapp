@@ -54,8 +54,8 @@ export async function route() {
     return startClient(app, sb, role.client_id);
   }
   // logged in but not linked to anything (e.g. access was reset)
-  await sb.auth.signOut();
-  toast("Esa cuenta ya no tiene acceso. Pedile un código nuevo a ValijApp.");
+  await sb.auth.signOut({ scope: "local" });
+  toast("Esa cuenta ya no tiene acceso. Escribile a ValijApp.");
   return renderLogin(app, sb, route);
 }
 

@@ -26,13 +26,26 @@ const ERRORS = {
   network: "No pude hablar con el servidor. ¿Está publicada la función admin-client-auth?"
 };
 
-export async function callAuth(body) {
+async function invokeAuth(body) {
   const { data, error } = await S.sb.functions.invoke(FN, { body });
-  if (error) {
-    let code = "network";
-    try { const j = await error.context.json(); code = j.error || code; } catch { /* not JSON */ }
-    throw new Error(ERRORS[code] || code);
+  if (!error) return { data, code: null };
+  let code = "network";
+  try { const j = await error.context.json(); code = j.error || code; } catch { /* not JSON */ }
+  return { data: null, code };
+}
+
+export async function callAuth(body) {
+  let { data, code } = await invokeAuth(body);
+  if (code === "not_authenticated") {
+    // the session may have been revoked elsewhere while its token still looks valid: refresh once and retry
+    const { error: refreshError } = await S.sb.auth.refreshSession();
+    if (!refreshError) ({ data, code } = await invokeAuth(body));
+    if (code === "not_authenticated") {
+      await S.sb.auth.signOut({ scope: "local" });
+      setTimeout(() => location.reload(), 1500);
+    }
   }
+  if (code) throw new Error(ERRORS[code] || code);
   if (!data || !data.ok) throw new Error(ERRORS[data && data.error] || "No se pudo completar");
   return data;
 }
