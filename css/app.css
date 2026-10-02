@@ -441,3 +441,6 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .pw { font-family: ui-monospace, Consolas, monospace; letter-spacing: .04em; }
 .pw-field { display: flex; gap: 6px; align-items: center; }
 .pw-field input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; }
+.access-new { border: 1px dashed var(--line); border-radius: 14px; padding: 12px 14px; margin: 0; display: grid; gap: 10px; }
+.access-new legend { font: 700 .9rem var(--display); padding: 0 6px; }
+.toolbar select[data-input="client-sort"] { min-width: 0; flex: 0 1 220px; }

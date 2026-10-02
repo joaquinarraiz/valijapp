@@ -1,7 +1,8 @@
 // Client login management (admin): create / change password / remove access.
 // The work happens in the Edge Function `admin-client-auth` (service role, never in the browser).
 // Admin-set passwords are kept in public.client_credentials (admin-only) so they can be resent.
-import { html, onAction, onForm, openSheet, closeSheet, toast, $ } from "../dom.js";
+// They are NEVER bulk-loaded: one row is read on demand (Ver / Copiar / Enviar por WhatsApp).
+import { html, mount, onAction, onForm, openSheet, closeSheet, toast, $ } from "../dom.js";
 import { icon } from "../icons.js";
 import { must } from "../supabase.js";
 import { waLink, waDigits } from "../format.js";
@@ -25,7 +26,7 @@ const ERRORS = {
   network: "No pude hablar con el servidor. ¿Está publicada la función admin-client-auth?"
 };
 
-async function callAuth(body) {
+export async function callAuth(body) {
   const { data, error } = await S.sb.functions.invoke(FN, { body });
   if (error) {
     let code = "network";
@@ -61,9 +62,53 @@ export function accessMessage(c, password) {
   return `Hola${firstName(c) ? " " + firstName(c) : ""}! Ya podés entrar a ValijApp 🧳\n👉 ${APP_URL}\nUsuario: ${c.id}\nContraseña: ${password}\nDespués podés cambiarla desde tu Perfil.`;
 }
 
+/** Password input with Mostrar/Ocultar + Generar (shared by "Crear acceso" and "Nueva clienta"). */
+export function passwordField({ value = "", required = true } = {}) {
+  return html`<span class="pw-field">
+    <input name="password" type="${value ? "text" : "password"}" minlength="8" maxlength="72" ${required ? "required" : ""} autocomplete="new-password" spellcheck="false" value="${value}">
+    <button type="button" class="btn ghost sm" data-act="access-toggle">${value ? "Ocultar" : "Mostrar"}</button>
+    <button type="button" class="btn ghost sm" data-act="access-suggest">Generar</button>
+  </span>`;
+}
+
+// ---------- stored password, on demand ----------
+// The password set in this session (memory only), so it can be sent right away without a query.
+let justSet = null; // { id, password }
+
+/** Is there a stored admin-set password? Cheap query without the password column. */
+async function hasStoredPassword(id) {
+  const { data, error } = await S.sb.from("client_credentials").select("client_id, set_at").eq("client_id", id).maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+/** Reads the stored password of ONE client, only when the admin asks for it. */
+async function storedPassword(id) {
+  if (justSet && justSet.id === id) return justSet.password;
+  const { data, error } = await S.sb.from("client_credentials").select("password").eq("client_id", id).maybeSingle();
+  if (error) throw error;
+  return data ? data.password : null;
+}
+
+/** Creates the login of a client. Throws with a Spanish message. */
+export async function createAccess(id, password) {
+  const res = await callAuth({ action: "create", client_id: id, password });
+  const row = must(await S.sb.from("clients_admin").select("*").eq("id", id).single());
+  upsertLocal(S.clients, map.client(row));
+  justSet = { id, password };
+  return res;
+}
+
+/** Removes the login of a client (the Edge Function deletes the auth user). Throws on failure. */
+export async function revokeAccess(id) {
+  await callAuth({ action: "revoke", client_id: id });
+  const c = clientById(id);
+  if (c) Object.assign(c, { userId: null, authEmail: null, avatarPath: null });
+  if (justSet && justSet.id === id) justSet = null;
+}
+
 // ---------- drawer block ----------
 export function accessBlock(c) {
-  const cred = S.credentials.get(c.id);
   if (!c.userId) {
     return html`<section class="card">
       <h3 class="h3">${icon("key")} Acceso a la app <span class="chip">Sin acceso</span></h3>
@@ -71,25 +116,41 @@ export function accessBlock(c) {
       <button class="btn primary" data-act="access-form" data-id="${c.id}" data-mode="create">Crear acceso</button>
     </section>`;
   }
-  const hasPhone = !!waDigits(c.phone);
   return html`<section class="card">
     <h3 class="h3">${icon("key")} Acceso a la app <span class="chip paid">Con acceso</span></h3>
     <div class="cred-row"><span>Usuario: <strong>${c.id}</strong></span>
       <button class="btn ghost sm" data-act="access-copy" data-what="user" data-id="${c.id}">Copiar</button></div>
-    ${cred ? html`<div class="cred-row"><span>Contraseña: <strong class="pw" id="pw-${c.id}">•••••••</strong></span>
-        <span class="btn-row tight">
-          <button class="btn ghost sm" data-act="access-reveal" data-id="${c.id}">Ver</button>
-          <button class="btn ghost sm" data-act="access-copy" data-what="password" data-id="${c.id}">Copiar</button>
-        </span></div>`
-      : html`<p class="small muted">La clienta eligió su propia contraseña.</p>`}
+    <div id="credState-${c.id}"><p class="small muted">Revisando contraseña…</p></div>
     <div class="btn-row">
-      ${cred ? (hasPhone
-        ? html`<a class="btn whatsapp" href="${waLink(c.phone, accessMessage(c, cred.password))}" target="_blank" rel="noopener">${icon("chat")} Enviar por WhatsApp</a>`
-        : html`<button class="btn ghost" data-act="access-copy" data-what="message" data-id="${c.id}">Copiar mensaje</button>`) : ""}
       <button class="btn ghost" data-act="access-form" data-id="${c.id}" data-mode="set_password">Cambiar contraseña</button>
       <button class="btn danger-ghost" data-act="access-revoke" data-id="${c.id}">Quitar acceso</button>
     </div>
   </section>`;
+}
+
+/** Called after the drawer is shown: fills the password row for that one client. */
+export async function hydrateAccess(c) {
+  if (!c.userId || !$("#credState-" + c.id)) return;
+  let stored;
+  try {
+    stored = (justSet && justSet.id === c.id) || await hasStoredPassword(c.id);
+  } catch (e) {
+    console.warn("client_credentials", e);
+    stored = false;
+  }
+  const box = $("#credState-" + c.id);
+  if (!box) return; // drawer changed meanwhile
+  const hasPhone = !!waDigits(c.phone);
+  mount(box, stored
+    ? html`<div class="cred-row"><span>Contraseña: <strong class="pw" id="pw-${c.id}">•••••••</strong></span>
+        <span class="btn-row tight">
+          <button class="btn ghost sm" data-act="access-reveal" data-id="${c.id}">Ver</button>
+          <button class="btn ghost sm" data-act="access-copy" data-what="password" data-id="${c.id}">Copiar</button>
+        </span></div>
+      <div class="btn-row">${hasPhone
+        ? html`<button class="btn whatsapp" data-act="access-wa" data-id="${c.id}">${icon("chat")} Enviar por WhatsApp</button>`
+        : html`<button class="btn ghost" data-act="access-copy" data-what="message" data-id="${c.id}">Copiar mensaje</button>`}</div>`
+    : html`<p class="small muted">La clienta eligió su propia contraseña.</p>`);
 }
 
 const backToDrawer = id => ({ onClose: () => setTimeout(() => openClientDrawer(Number(id))) });
@@ -103,20 +164,13 @@ onAction("access-form", d => {
   <form class="form" data-form="access-save" id="accessForm" autocomplete="off">
     <input type="hidden" name="id" value="${c.id}">
     <input type="hidden" name="mode" value="${d.mode}">
-    <label>Contraseña
-      <span class="pw-field">
-        <input name="password" type="password" minlength="8" maxlength="72" required autocomplete="new-password" spellcheck="false">
-        <button type="button" class="btn ghost sm" data-act="access-toggle">Mostrar</button>
-        <button type="button" class="btn ghost sm" data-act="access-suggest">Generar</button>
-      </span>
-    </label>
+    <label>Contraseña ${passwordField({ value: create ? suggestPassword() : "" })}</label>
     <p class="small muted">Mínimo 8 caracteres. “Generar” arma una fácil de dictar (dos palabras y dos números).</p>
     <div class="form-actions">
       <button type="button" class="btn ghost" data-act="sheet-close">Cancelar</button>
       <button class="btn primary" type="submit">${create ? "Crear acceso" : "Guardar contraseña"}</button>
     </div>
   </form>`, backToDrawer(c.id));
-  if (create) { const f = $("#accessForm"); f.password.value = suggestPassword(); f.password.type = "text"; f.querySelector("[data-act=access-toggle]").textContent = "Ocultar"; }
 });
 
 onAction("access-toggle", (_d, el) => {
@@ -135,13 +189,11 @@ onForm("access-save", async f => {
   const id = Number(f.id);
   if ((f.password || "").length < 8) return toast(ERRORS.invalid_password);
   try {
-    const res = await callAuth({ action: f.mode, client_id: id, password: f.password });
-    if (f.mode === "create") {
-      const row = must(await S.sb.from("clients_admin").select("*").eq("id", id).single());
-      upsertLocal(S.clients, map.client(row));
+    if (f.mode === "create") await createAccess(id, f.password);
+    else {
+      await callAuth({ action: "set_password", client_id: id, password: f.password });
+      justSet = { id, password: f.password };
     }
-    if (res.stored) S.credentials.set(id, { password: f.password, setAt: new Date().toISOString() });
-    else S.credentials.delete(id);
     toast(f.mode === "create" ? "Acceso creado" : "Contraseña cambiada");
     rerender();
     closeSheet(); // its onClose reopens the drawer
@@ -154,9 +206,7 @@ onAction("access-revoke", async d => {
   const c = clientById(d.id);
   if (!confirm(`¿Quitarle el acceso a ${c.name}? No va a poder entrar más hasta que le crees uno nuevo. Sus compras y pagos no se borran.`)) return;
   try {
-    await callAuth({ action: "revoke", client_id: c.id });
-    Object.assign(c, { userId: null, authEmail: null, avatarPath: null });
-    S.credentials.delete(c.id);
+    await revokeAccess(c.id);
     toast("Acceso quitado");
     rerender();
     openClientDrawer(c.id);
@@ -165,19 +215,45 @@ onAction("access-revoke", async d => {
   }
 });
 
-onAction("access-reveal", (d, el) => {
-  const cred = S.credentials.get(Number(d.id));
+async function passwordOrToast(id) {
+  try {
+    const pw = await storedPassword(id);
+    if (!pw) toast("No hay contraseña guardada para esta clienta");
+    return pw;
+  } catch (e) {
+    toast("No pude leer la contraseña: " + (e.message || e));
+    return null;
+  }
+}
+
+onAction("access-reveal", async (d, el) => {
   const span = $("#pw-" + d.id);
-  if (!cred || !span) return;
-  const showing = el.textContent === "Ocultar";
-  span.textContent = showing ? "•••••••" : cred.password;
-  el.textContent = showing ? "Ver" : "Ocultar";
+  if (!span) return;
+  if (el.textContent === "Ocultar") { span.textContent = "•••••••"; el.textContent = "Ver"; return; }
+  const pw = await passwordOrToast(Number(d.id));
+  if (!pw) return;
+  span.textContent = pw;
+  el.textContent = "Ocultar";
 });
 
 onAction("access-copy", async d => {
   const c = clientById(d.id);
-  const cred = S.credentials.get(c.id);
-  const text = d.what === "user" ? String(c.id) : d.what === "password" ? cred && cred.password : cred && accessMessage(c, cred.password);
-  if (!text) return;
+  let text;
+  if (d.what === "user") text = String(c.id);
+  else {
+    const pw = await passwordOrToast(c.id);
+    if (!pw) return;
+    text = d.what === "password" ? pw : accessMessage(c, pw);
+  }
   try { await navigator.clipboard.writeText(text); toast("Copiado"); } catch { toast("No pude copiar"); }
+});
+
+onAction("access-wa", async d => {
+  const c = clientById(d.id);
+  // open the tab synchronously (popup blockers), then point it at WhatsApp once the password is read
+  const win = window.open("", "_blank");
+  const pw = await passwordOrToast(c.id);
+  if (!pw) { if (win) win.close(); return; }
+  const url = waLink(c.phone, accessMessage(c, pw));
+  if (win) { win.opener = null; win.location.href = url; } else location.href = url;
 });

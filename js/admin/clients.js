@@ -11,21 +11,61 @@ import { rerender } from "./app.js";
 import { movementRow, saleSheet, paymentSheet } from "./movements.js";
 import { scheduleBackup } from "./sync.js";
 import { stat } from "../ui.js";
-import { accessBlock } from "./access.js";
+import { accessBlock, hydrateAccess, passwordField, suggestPassword, createAccess, revokeAccess } from "./access.js";
 
-const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
+const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["aldia", "Al día"], ["inactivas", "Inactivas"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
+const SORTS = [["deuda", "Mayor deuda"], ["nombre", "Nombre (A-Z)"], ["numero", "N° de clienta"], ["reciente", "Última compra (reciente primero)"], ["compras", "Más compraron"]];
+const PREFS_KEY = "valijapp_clients_view";
+
+// remember sort + chip per device
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+    if (CHIPS.some(([id]) => id === p.chip)) S.filters.clientChip = p.chip;
+    if (SORTS.some(([id]) => id === p.sort)) S.filters.clientSort = p.sort;
+  } catch { /* storage unavailable */ }
+}
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ chip: S.filters.clientChip, sort: S.filters.clientSort })); } catch { /* ignore */ }
+}
+loadPrefs();
+if (!S.filters.clientSort) S.filters.clientSort = "deuda";
+
+const byName = (a, b) => a.c.name.localeCompare(b.c.name, "es", { sensitivity: "base" });
+const SORTERS = {
+  deuda: (a, b) => b.s.debt - a.s.debt || byName(a, b),
+  nombre: byName,
+  numero: (a, b) => a.c.id - b.c.id,
+  // clients without purchases go last
+  reciente: (a, b) => (a.s.last ? 0 : 1) - (b.s.last ? 0 : 1) || (b.s.last || "").localeCompare(a.s.last || "") || byName(a, b),
+  compras: (a, b) => b.s.bought - a.s.bought || byName(a, b)
+};
+
+function chipMatch(chip, c, s) {
+  const days = Number(S.settings.inactiveDays) || 45; // same rule as the dashboard
+  switch (chip) {
+    case "deben": return s.debt > 0;
+    case "aldia": return s.debt <= 0;
+    case "inactivas": return !!s.last && daysSince(s.last) >= days;
+    case "sinacceso": return !c.userId;
+    case "conacceso": return !!c.userId;
+    default: return true;
+  }
+}
 
 function rows() {
   const sums = clientSummaries(S.movements);
   const t = norm(S.filters.clientText);
-  const chip = S.filters.clientChip;
+  const digits = t.replace(/\D/g, "");
   return S.clients
     .map(c => ({ c, s: sums.get(c.id) || { debt: 0, bought: 0, last: null } }))
     .filter(({ c, s }) =>
-      (!t || norm(c.name).includes(t) || norm(c.displayName).includes(t) || (c.phone || "").replace(/\D/g, "").includes(t.replace(/\D/g, "") || "§") || norm(c.address).includes(t) || String(c.id) === t) &&
-      (chip === "todas" || (chip === "deben" && s.debt > 0) || (chip === "sinacceso" && !c.userId) || (chip === "conacceso" && c.userId)))
-    .sort((a, b) => b.s.debt - a.s.debt || a.c.name.localeCompare(b.c.name));
+      (!t || norm(c.name).includes(t) || norm(c.displayName).includes(t) || (digits && (c.phone || "").replace(/\D/g, "").includes(digits)) || norm(c.address).includes(t) || String(c.id) === t) &&
+      chipMatch(S.filters.clientChip, c, s))
+    .sort(SORTERS[S.filters.clientSort] || SORTERS.deuda);
 }
+
+const countText = n => n === S.clients.length ? String(n) : `${n} / ${S.clients.length}`;
 
 function clientRow({ c, s }) {
   return html`<li><button class="row client-row" data-act="client-open" data-id="${c.id}">
@@ -42,26 +82,37 @@ export function vClients() {
   const list = rows();
   return html`
   <header class="view-head">
-    <h1 class="display-l">Clientas <span class="count">${S.clients.length}</span></h1>
+    <h1 class="display-l">Clientas <span class="count" id="clientCount">${countText(list.length)}</span></h1>
     <div class="head-actions"><button class="btn primary" data-act="client-new">Nueva clienta</button></div>
   </header>
   <div class="toolbar">
     <label class="search">${icon("search")}<input type="search" placeholder="Nombre, teléfono, dirección o N°" value="${S.filters.clientText}" data-input="client-search" aria-label="Buscar clienta"></label>
+    <select data-input="client-sort" aria-label="Ordenar">
+      ${SORTS.map(([id, label]) => html`<option value="${id}" ${S.filters.clientSort === id ? "selected" : ""}>${label}</option>`)}
+    </select>
   </div>
   <div class="chips" role="group" aria-label="Filtro">
-    ${CHIPS.map(([id, label]) => html`<button class="filter-chip ${S.filters.clientChip === id ? "on" : ""}" data-act="client-chip" data-chip="${id}">${label}</button>`)}
+    ${CHIPS.map(([id, label]) => html`<button class="filter-chip ${S.filters.clientChip === id ? "on" : ""}" data-act="client-chip" data-chip="${id}" aria-pressed="${S.filters.clientChip === id}">${label}</button>`)}
   </div>
   <ul class="rows card flush" id="clientList">${list.map(clientRow)}</ul>
-  ${!list.length ? html`<section class="empty"><p>No encontré clientas con ese filtro.</p></section>` : ""}`;
+  <section class="empty" id="clientEmpty" ${list.length ? "hidden" : ""}><p>No encontré clientas con ese filtro.</p></section>`;
+}
+
+function repaintList() {
+  const list = rows();
+  mount($("#clientList"), list.map(clientRow));
+  $("#clientCount").textContent = countText(list.length);
+  $("#clientEmpty").hidden = list.length > 0;
 }
 
 let t;
 onInput("client-search", v => {
   S.filters.clientText = v;
   clearTimeout(t);
-  t = setTimeout(() => mount($("#clientList"), rows().map(clientRow)), 100);
+  t = setTimeout(repaintList, 100);
 });
-onAction("client-chip", d => { S.filters.clientChip = d.chip; rerender(); });
+onAction("client-chip", d => { S.filters.clientChip = d.chip; savePrefs(); rerender(); });
+onInput("client-sort", v => { S.filters.clientSort = v; savePrefs(); repaintList(); });
 onAction("client-open", d => openClientDrawer(Number(d.id)));
 onAction("client-new", () => clientFormSheet());
 
@@ -112,6 +163,7 @@ export function openClientDrawer(id) {
       ${movs.length ? html`<ul class="rows">${movs.map(m => movementRow(m, false, String(c.id)))}</ul>` : html`<p class="muted pad">Sin movimientos todavía.</p>`}
     </section>
   </div>`, { wide: true });
+  hydrateAccess(c);
 }
 
 onAction("drawer-sale", d => saleSheet(Number(d.id), d.id));
@@ -143,6 +195,14 @@ export function clientFormSheet(id = null) {
       <label>Email<input name="email" type="email" maxlength="120" value="${c ? c.email : ""}"></label>
     </div>
     <label>Notas (solo las ves vos)<textarea name="notes" rows="2" maxlength="500">${c ? c.notes : ""}</textarea></label>
+    ${c ? "" : html`<fieldset class="access-new">
+      <legend>Acceso a la app</legend>
+      <label class="check"><input type="checkbox" name="give_access" data-input="client-give-access"> Darle acceso ahora</label>
+      <div id="newAccessPw" hidden>
+        <label>Contraseña (su usuario va a ser el N°) ${passwordField({ value: suggestPassword(), required: false })}</label>
+        <p class="small muted">Mínimo 8 caracteres. Después de guardar te muestro el botón para mandárselo por WhatsApp.</p>
+      </div>
+    </fieldset>`}
     ${c && c.displayName ? html`<p class="small muted">Ella se puso de nombre “${c.displayName}”. Eso no cambia cómo la ves vos.</p>` : ""}
     <div class="form-actions">
       ${c ? html`<button type="button" class="btn danger-ghost" data-act="client-delete" data-id="${c.id}">${icon("trash")} Borrar</button>` : ""}
@@ -158,6 +218,12 @@ export function clientFormSheet(id = null) {
   } : {});
 }
 
+onInput("client-give-access", (_v, el) => {
+  const box = $("#newAccessPw");
+  box.hidden = !el.checked;
+  box.querySelector("[name=password]").required = el.checked;
+});
+
 onForm("client-save", async f => {
   const name = norm(f.name);
   const id = Number(f.id);
@@ -166,6 +232,8 @@ onForm("client-save", async f => {
   if (!id) return toast("Falta el número");
   if (S.clients.some(x => norm(x.name) === name && x.id !== oldId)) return toast("Ya existe una clienta con ese nombre");
   if (S.clients.some(x => x.id === id && x.id !== oldId)) return toast(`El N° ${id} ya es de otra clienta`);
+  const giveAccess = !oldId && !!f.give_access;
+  if (giveAccess && (f.password || "").length < 8) return toast("La contraseña tiene que tener al menos 8 caracteres");
   const patch = { id, name, phone: f.phone.trim() || null, address: f.address.trim() || null, email: f.email.trim() || null, notes: f.notes.trim() || null };
   let row;
   if (oldId) {
@@ -179,6 +247,18 @@ onForm("client-save", async f => {
   upsertLocal(S.clients, c);
   S.lastSavedClientId = c.id;
   closeSheet(); rerender(); scheduleBackup();
+  if (giveAccess) {
+    // the client is already saved; access is a second step that may fail on its own
+    try {
+      await createAccess(c.id, f.password);
+      toast("Clienta guardada y con acceso. Mandale los datos por WhatsApp.");
+    } catch (e) {
+      toast("La clienta se guardó, pero no se pudo crear el acceso: " + e.message);
+    }
+    rerender();
+    openClientDrawer(c.id);
+    return;
+  }
   if (!oldId) openClientDrawer(c.id);
   toast("Clienta guardada");
 });
@@ -186,7 +266,10 @@ onForm("client-save", async f => {
 onAction("client-delete", async d => {
   const c = clientById(d.id);
   const n = S.movements.filter(m => m.clientId === c.id).length;
-  if (!confirm(`¿Borrar a ${c.name}?` + (n ? ` Tiene ${n} movimientos que también se borran.` : ""))) return;
+  if (!confirm(`¿Borrar a ${c.name}?` + (n ? ` Tiene ${n} movimientos que también se borran.` : "") + (c.userId ? " También se le quita el acceso a la app." : ""))) return;
+  if (c.userId) {
+    try { await revokeAccess(c.id); } catch (e) { return toast("No se borró: no se pudo quitar su acceso (" + e.message + ")"); }
+  }
   try { await deleteOne("clients_admin", c.id); } catch (e) { return toast("No se pudo borrar: " + e.message); }
   S.movements = S.movements.filter(m => m.clientId !== c.id);
   removeLocal(S.clients, c.id);

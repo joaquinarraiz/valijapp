@@ -6,8 +6,8 @@ export const S = {
   sb: null, app: null,
   view: "inicio", cashTab: "caja",
   clients: [], movements: [], trips: [], cash: [], places: [],
-  settings: null, credentials: new Map(), coupons: [], couponTargets: new Map(), broadcasts: [], readCounts: new Map(),
-  filters: { clientText: "", clientChip: "todas", movText: "", movTrip: "", movLimit: 100 },
+  settings: null, coupons: [], couponTargets: new Map(), broadcasts: [], readCounts: new Map(),
+  filters: { clientText: "", clientChip: "todas", clientSort: "deuda", movText: "", movTrip: "", movLimit: 100 },
   sync: "off" // off | pending | ok | error (Google Sheets backup)
 };
 
@@ -63,13 +63,6 @@ export async function loadAll() {
     S.couponTargets.get(t.coupon_id).push(t.client_id);
   }
   S.broadcasts = broadcasts.map(map.broadcast);
-  // admin-set passwords (admin-only table); tolerate a database that does not have it yet
-  S.credentials = new Map();
-  try {
-    for (const r of await fetchAll(sb, "client_credentials", { order: "client_id" })) S.credentials.set(r.client_id, { password: r.password, setAt: r.set_at });
-  } catch (e) {
-    console.warn("client_credentials not available", e);
-  }
   S.readCounts = new Map();
   for (const r of reads) S.readCounts.set(r.broadcast_id, (S.readCounts.get(r.broadcast_id) || 0) + 1);
 }
