@@ -1,0 +1,13 @@
+# never commit legacy data or exports with client personal data
+data.js
+js/data.js
+_old/
+*.xlsx
+*.xls
+*respaldo*.json
+.env
+.env.*
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
