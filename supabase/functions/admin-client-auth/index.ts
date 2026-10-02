@@ -12,7 +12,7 @@
 // Error codes: method_not_allowed, bad_json, not_authenticated, not_admin, invalid_action, invalid_client_id,
 //              invalid_password, client_not_found, already_has_access, no_access, auth_error, db_error
 //
-// Env (provided automatically by Supabase): SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+// Env (provided automatically by Supabase): SUPABASE_URL, SUPABASE_SECRET_KEYS (or legacy SUPABASE_SERVICE_ROLE_KEY)
 // Keep "Verify JWT" ON for this function.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
@@ -50,6 +50,16 @@ function random8(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+/** New-style secret key (SUPABASE_SECRET_KEYS JSON) first; legacy service_role JWT as fallback. */
+function secretKey(): string | null {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
+    const k = keys.default ?? Object.values(keys)[0];
+    if (typeof k === "string" && k) return k;
+  } catch { /* fall through */ }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? null;
+}
+
 function validClientId(v: unknown): number | null {
   const n = typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : NaN;
   return Number.isInteger(n) && n >= 1 && n <= 2147483647 ? n : null;
@@ -80,22 +90,20 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405, origin);
 
   const url = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const serviceKey = secretKey();
+  if (!serviceKey) return json({ ok: false, error: "server_misconfigured" }, 500, origin);
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 1) who is calling?
+  // 1) who is calling? (the token is validated by Supabase Auth, not just decoded)
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (!token) return json({ ok: false, error: "not_authenticated" }, 401, origin);
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: userData, error: userError } = await userClient.auth.getUser(token);
-  if (userError || !userData?.user) return json({ ok: false, error: "not_authenticated" }, 401, origin);
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData?.user) {
+    return json({ ok: false, error: "not_authenticated", detail: userError?.message }, 401, origin);
+  }
 
   // 2) must be an admin (checked with the service client, not trusting the caller)
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: adminRow, error: adminError } = await admin
     .from("admins").select("user_id").eq("user_id", userData.user.id).maybeSingle();
   if (adminError) return json({ ok: false, error: "db_error" }, 500, origin);
