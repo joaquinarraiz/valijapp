@@ -5,6 +5,7 @@ import { must } from "./supabase.js";
 import { fmtMoney, fmtDate } from "./format.js";
 import { pendingPayments, balanceWithPending, validTransferAmount } from "./calc.js";
 import { icon } from "./icons.js";
+import { SUPPORT_WA, waTo } from "./contact.js";
 
 const MAX_FILE = 3 * 1024 * 1024;
 const REQUEST_COLS = "id, amount, note, receipt_path, status, created_at, resolved_at";
@@ -142,11 +143,12 @@ onForm("pay-send", async (f, form) => {
   const S = C.S();
   const amount = chosenAmount(form);
   if (!amount) return toast(`Poné un monto mayor a $0 y hasta ${fmtMoney(C.balance())}`);
-  let receipt_path = null;
+  let receipt_path = null, shareFile = null;
   const file = f.receipt && f.receipt.size ? f.receipt : null;
   if (file) {
     let r;
     try { r = await prepareReceipt(file); } catch (e) { return toast(e.message); }
+    shareFile = new File([r.blob], `comprobante-valijapp.${r.ext}`, { type: r.type });
     const path = `${S.userId}/receipt-${Date.now()}.${r.ext}`;
     const up = await S.sb.storage.from("receipts").upload(path, r.blob, { contentType: r.type, upsert: false });
     if (up.error) return toast("No se pudo subir el comprobante: " + up.error.message);
@@ -162,9 +164,38 @@ onForm("pay-send", async (f, form) => {
     return toast("No se pudo informar el pago: " + error.message);
   }
   S.requests.unshift(data);
-  closeSheet();
-  toast("¡Listo! Te avisamos cuando se acredite.");
   C.render();
+  showSent(amount, shareFile);
+});
+
+// ---------- after reporting: send the receipt by WhatsApp without digging through the gallery ----------
+let pendingShare = null;
+
+function showSent(amount, file) {
+  const S = C.S();
+  const who = S.me.display_name ? `${S.me.display_name} (clienta N° ${S.clientId})` : `la clienta N° ${S.clientId}`;
+  const text = `Hola! Soy ${who}. Te transferí ${fmtMoney(amount)} desde ValijApp.` + (file ? " Te mando el comprobante." : "");
+  // Web Share with files works on Android Chrome and iPhone Safari; desktop falls back to a plain wa.me link
+  const canShareFile = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+  pendingShare = canShareFile ? { file, text } : null;
+  openSheet(html`
+  <h2 class="display-m">¡Listo!</h2>
+  <p>Te avisamos cuando se acredite.</p>
+  ${canShareFile
+    ? html`<button type="button" class="btn whatsapp block" data-act="pay-share">${icon("chat")} Mandar comprobante por WhatsApp</button>
+      <p class="muted small">Se abre «Compartir»: elegí WhatsApp y el chat de ValijApp.</p>`
+    : html`<a class="btn whatsapp block" href="${waTo(SUPPORT_WA, text)}" target="_blank" rel="noopener">${icon("chat")} Avisar por WhatsApp</a>`}
+  <button type="button" class="btn ghost block" data-act="sheet-close">Cerrar</button>`);
+}
+
+onAction("pay-share", async () => {
+  if (!pendingShare) return;
+  try {
+    await navigator.share({ files: [pendingShare.file], text: pendingShare.text });
+    closeSheet();
+  } catch (e) {
+    if (e && e.name !== "AbortError") toast("No se pudo abrir «Compartir». Mandalo desde «Consultas y pagos».");
+  }
 });
 
 onAction("pay-cancel", async d => {
