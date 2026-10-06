@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
@@ -177,6 +177,31 @@ test("convertLegacy validates rows instead of failing", () => {
 test("cash rows of the same day keep insertion order (seq)", () => {
   const rows = [{ id: "b", date: "2026-01-01", seq: 2 }, { id: "c", date: "2025-12-31", seq: 3 }, { id: "a", date: "2026-01-01", seq: 1 }];
   assert.deepEqual(sortCash(rows).map(r => r.id), ["c", "a", "b"]);
+});
+
+test("reported transfers: pending total, balance preview, amount validation", () => {
+  const reqs = [{ status: "pending", amount: 1000 }, { status: "pending", amount: "500.5" }, { status: "confirmed", amount: 9999 }, { status: "rejected", amount: 7 }];
+  assert.deepEqual(pendingPayments(reqs), { count: 2, total: 1500.5 });
+  assert.equal(balanceWithPending(20000, reqs), 18499.5);
+  assert.equal(validTransferAmount("5000", 20000), 5000);
+  assert.equal(validTransferAmount(20000, 20000), 20000);
+  assert.equal(validTransferAmount(20001, 20000), null);
+  assert.equal(validTransferAmount(0, 20000), null);
+  assert.equal(validTransferAmount("abc", 20000), null);
+  assert.equal(validTransferAmount(10.555, 20000), 10.56);
+});
+
+test("coupons: one use per client, used ones are not offered again", () => {
+  const coupons = [
+    { id: "a", kind: "percent", value: 10, active: true, allClients: true },
+    { id: "b", kind: "fixed", value: 500, active: true, allClients: false },
+    { id: "c", kind: "fixed", value: 100, active: true, allClients: true, endsOn: "2026-01-01" }
+  ];
+  const movements = [{ clientId: 7, couponId: "a" }, { clientId: 8, couponId: "b" }];
+  const targetsOf = id => (id === "b" ? [7] : []);
+  assert.deepEqual([...usedCouponIds(movements, 7)], ["a"]);
+  assert.deepEqual(availableCoupons(coupons, { clientId: 7, date: "2026-10-06", targetsOf, movements }).map(c => c.id), ["b"]);
+  assert.deepEqual(availableCoupons(coupons, { clientId: 9, date: "2026-10-06", targetsOf, movements }).map(c => c.id), ["a"]);
 });
 
 console.log(`\n${passed} tests passed`);

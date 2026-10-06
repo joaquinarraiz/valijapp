@@ -12,6 +12,7 @@ import { movementRow, saleSheet, paymentSheet } from "./movements.js";
 import { scheduleBackup } from "./sync.js";
 import { stat } from "../ui.js";
 import { accessBlock, hydrateAccess, passwordField, suggestPassword, createAccess, revokeAccess } from "./access.js";
+import { drawerPayments } from "./payments.js";
 
 const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["aldia", "Al día"], ["inactivas", "Inactivas"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
 const SORTS = [["deuda", "Mayor deuda"], ["nombre", "Nombre (A-Z)"], ["numero", "N° de clienta"], ["reciente", "Última compra (reciente primero)"], ["compras", "Más compraron"]];
@@ -157,6 +158,7 @@ export function openClientDrawer(id) {
       ${c.email ? html`<a href="mailto:${c.email}">${icon("mail")} ${c.email}</a>` : ""}
       ${c.notes ? html`<p class="notes">${c.notes}</p>` : ""}
     </section>
+    ${drawerPayments(c.id)}
     ${accessBlock(c)}
     <section class="card flush">
       <h3 class="h3 pad">Estado de cuenta <span class="count">${movs.length}</span></h3>

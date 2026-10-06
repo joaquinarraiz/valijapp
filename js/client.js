@@ -8,6 +8,7 @@ import { logout } from "./auth.js";
 import { icon } from "./icons.js";
 import { luggageTag as tagCard } from "./ui.js";
 import { SUPPORT_WA, waTo } from "./contact.js";
+import { initPay, loadPayments, payButton, pendingNote, requestsCard } from "./client-pay.js";
 
 let S = null; // { app, sb, clientId, userId, me, movements, coupons, targets, broadcasts, reads, tab }
 
@@ -20,7 +21,8 @@ const TABS = [
 
 export async function startClient(app, sb, clientId) {
   const { data: { user } } = await sb.auth.getUser();
-  S = { app, sb, clientId, userId: user.id, tab: "cuenta" };
+  S = { app, sb, clientId, userId: user.id, tab: "cuenta", payInfo: null, requests: [] };
+  initPay({ S: () => S, balance, render, resizeImage });
   await load();
   render();
   onInstallChange(() => { if (S.tab === "cuenta" || S.tab === "perfil") render(); });
@@ -37,6 +39,7 @@ async function load() {
     sb.from("broadcast_reads").select("broadcast_id")
   ]).then(rs => rs.map(must));
   Object.assign(S, { me, movements, coupons, targets: targets.map(t => t.coupon_id), broadcasts, reads: new Set(reads.map(r => r.broadcast_id)) });
+  Object.assign(S, await loadPayments(sb, S.clientId));
 }
 
 const balance = () => S.movements.reduce((a, m) => a + Number(m.total) - Number(m.paid), 0);
@@ -83,8 +86,10 @@ function vAccount() {
     <h1 class="display-l">${hello}</h1>
     ${pinned ? html`<button class="pinned-banner" data-act="c-tab" data-tab="novedades"><span>${pinned.emoji || "📌"}</span><strong>${pinned.title}</strong><span class="muted small">Ver</span></button>` : ""}
     ${tag}
-    ${supportButton()}
+    ${pendingNote()}
+    <div class="pay-actions">${payButton()}${supportButton()}</div>
     ${installCard()}
+    ${requestsCard()}
     <section class="card">
       <h2 class="h3">Tus movimientos</h2>
       ${S.movements.length ? html`<ul class="rows">${S.movements.map(m => movementRow(m))}</ul>` : html`<p class="muted">Todavía no hay compras anotadas.</p>`}
@@ -117,7 +122,9 @@ function supportButton() {
 }
 
 function vCoupons() {
-  const list = validCoupons();
+  // one use per coupon: once used on a purchase it moves to "Usados"
+  const usedIds = new Set(S.movements.filter(m => m.coupon_id).map(m => m.coupon_id));
+  const list = validCoupons().filter(c => !usedIds.has(c.id));
   const used = S.movements.filter(m => m.coupon_id);
   return html`
     <h1 class="display-l">Cupones</h1>
@@ -129,10 +136,16 @@ function vCoupons() {
           <button class="coupon-code" data-act="c-copy" data-code="${c.code}" aria-label="Copiar código">${c.code}</button>
           <span class="small muted">${c.ends_on ? "Vence " + fmtDate(c.ends_on) : "Sin vencimiento"}</span>
         </div>
-        <p class="small muted">Mostrale el código a ValijApp cuando compres.</p>
+        <p class="small muted">Se aplica en tu próxima compra. Mostrale el código a ValijApp cuando compres.</p>
       </article>`)}</div>`
       : html`<section class="empty"><p>No tenés cupones disponibles ahora.</p><p class="muted small">Cuando haya uno para vos, aparece acá.</p></section>`}
-    ${used.length ? html`<section class="card"><h2 class="h3">Cupones que usaste</h2><ul class="rows">${used.map(m => movementRow(m))}</ul></section>` : ""}`;
+    ${used.length ? html`<section class="card"><h2 class="h3">Usados</h2><ul class="rows">${used.map(m => {
+      const c = S.coupons.find(x => x.id === m.coupon_id);
+      return html`<li class="row"><div class="row-main">
+          <div class="row-title">${c ? c.code : "Cupón"}${c ? html` <span class="small muted">· ${c.title}</span>` : ""}</div>
+          <div class="row-sub">Usado el ${fmtDate(m.date)}</div></div>
+        <div class="row-amounts">${Number(m.discount_amount) > 0 ? html`<div class="amt paid">−${fmtMoney(m.discount_amount)}</div>` : ""}</div></li>`;
+    })}</ul></section>` : ""}`;
 }
 
 function vNews() {

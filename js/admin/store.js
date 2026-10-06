@@ -7,6 +7,7 @@ export const S = {
   view: "inicio", cashTab: "caja",
   clients: [], movements: [], trips: [], cash: [], places: [],
   settings: null, coupons: [], couponTargets: new Map(), broadcasts: [], readCounts: new Map(),
+  paymentRequests: [], paymentsReady: false,
   filters: { clientText: "", clientChip: "todas", clientSort: "deuda", movText: "", movTrip: "", movLimit: 100 },
   sync: "off" // off | pending | ok | error (Google Sheets backup)
 };
@@ -27,7 +28,8 @@ export const map = {
   settings: r => ({
     partner1Name: r.partner1_name, partner1Pct: Number(r.partner1_pct), partner2Name: r.partner2_name, partner2Pct: Number(r.partner2_pct),
     inactiveDays: r.inactive_days, cashSince: r.cash_since, cashInitial: Number(r.cash_initial), sheetsUrl: r.sheets_url || "",
-    legacyImportedAt: r.legacy_imported_at
+    legacyImportedAt: r.legacy_imported_at,
+    paymentAlias: r.payment_alias || "", paymentCvu: r.payment_cvu || "", paymentHolder: r.payment_holder || "", paymentBank: r.payment_bank || ""
   }),
   coupon: r => ({
     id: r.id, code: r.code, title: r.title, kind: r.kind, value: Number(r.value), startsOn: r.starts_on, endsOn: r.ends_on,

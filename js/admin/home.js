@@ -7,6 +7,7 @@ import { S, calcData, clientName, partnerName } from "./store.js";
 import { go } from "./app.js";
 import { cashRow, cashSheet } from "./cash.js";
 import { migrationCard } from "./more.js";
+import { paymentsHomeCard } from "./payments.js";
 
 export function vHome() {
   const d = dashboard(calcData());
@@ -21,6 +22,7 @@ export function vHome() {
 
   return html`
   ${migrationCard(true)}
+  ${paymentsHomeCard()}
   <div class="home-hero">
     ${luggageTag({
       label: "Plata en la caja", amount: fmtMoney(d.cash.balance), tone: d.cash.balance >= 0 ? "box" : "negative", act: "go-caja",

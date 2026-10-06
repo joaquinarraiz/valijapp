@@ -3,7 +3,7 @@ import { html, mount, onAction, onForm, onInput, openSheet, closeSheet, toast, $
 import { icon } from "../icons.js";
 import { must } from "../supabase.js";
 import { fmtMoney, fmtDate } from "../format.js";
-import { clientBalance, couponDiscount, couponIsValid, sortTrips, tripRange, todayISO } from "../calc.js";
+import { clientBalance, couponDiscount, couponIsValid, sortTrips, tripRange, todayISO, availableCoupons, usedCouponIds } from "../calc.js";
 import { norm } from "../legacy.js";
 import { S, map, clientById, clientName, upsertLocal, removeLocal, deleteOne } from "./store.js";
 import { clientPicker } from "./picker.js";
@@ -88,9 +88,13 @@ onInput("mov-trip", v => { S.filters.movTrip = v; S.filters.movLimit = 100; rere
 onAction("mov-more", () => { S.filters.movLimit += 200; rerender(); });
 
 // ---------- sale ----------
+/** Valid coupons for this client and date that she has not used yet (one use per client per coupon). */
 function couponsFor(clientId, date) {
-  return S.coupons.filter(c => couponIsValid(c, { date, clientId, targets: S.couponTargets.get(c.id) || [] }));
+  return availableCoupons(S.coupons, { clientId, date, targetsOf: id => S.couponTargets.get(id) || [], movements: S.movements });
 }
+
+const couponLabel = c => `${c.code} −${c.kind === "percent" ? c.value + "%" : fmtMoney(c.value)}`;
+let saleCouponCleared = false; // the admin removed the auto-suggested coupon in the open sale form
 
 export function saleSheet(clientId = null, from = "") {
   openSheet(html`
@@ -107,7 +111,8 @@ export function saleSheet(clientId = null, from = "") {
     <p class="small" id="saleInfo"></p>
     <div class="form-actions"><button type="button" class="btn ghost" data-act="sheet-close">Cancelar</button><button class="btn sale" type="submit">Guardar venta</button></div>
   </form>`, backTo(from));
-  $("#saleForm .picker").addEventListener("picked", saleRecalc);
+  saleCouponCleared = false;
+  $("#saleForm .picker").addEventListener("picked", () => { saleCouponCleared = false; saleRecalc(); });
   saleRecalc();
 }
 
@@ -119,11 +124,19 @@ function saleRecalc() {
   const list = couponsFor(clientId, date);
   const box = $("#saleCoupon");
   const current = f.coupon_id ? f.coupon_id.value : "";
-  if (list.length) {
-    mount(box, html`<label>Cupón
+  if (list.length === 1 && !saleCouponCleared) {
+    // exactly one usable coupon: pre-selected, removable
+    const c = list[0];
+    mount(box, html`<div class="coupon-pick">
+      <input type="hidden" name="coupon_id" value="${c.id}">
+      <span class="chip coupon">Cupón ${couponLabel(c)}</span><span class="small muted">${c.title}</span>
+      <button type="button" class="btn ghost sm" data-act="sale-coupon-clear">Quitar</button>
+    </div>`);
+  } else if (list.length) {
+    mount(box, html`<label>${list.length > 1 ? `Tiene ${list.length} cupones para usar` : "Cupón"}
       <select name="coupon_id" data-input="sale-recalc">
         <option value="">Sin cupón</option>
-        ${list.map(c => html`<option value="${c.id}" ${current === c.id ? "selected" : ""}>${c.code} · ${c.kind === "percent" ? c.value + "%" : fmtMoney(c.value)} — ${c.title}</option>`)}
+        ${list.map(c => html`<option value="${c.id}" ${current === c.id ? "selected" : ""}>${couponLabel(c)} — ${c.title}</option>`)}
       </select></label>`);
   } else mount(box, "");
   const gross = Number(f.gross.value) || 0;
@@ -135,6 +148,7 @@ function saleRecalc() {
     ${clientId ? (debt > 0 ? html`Ya debía <strong class="owes">${fmtMoney(debt)}</strong>` : html`<span class="muted">No debía nada</span>`) : ""}`);
 }
 onInput("sale-recalc", saleRecalc);
+onAction("sale-coupon-clear", () => { saleCouponCleared = true; saleRecalc(); });
 onAction("sale-new", () => saleSheet());
 
 async function resolveClient(f) {
@@ -158,13 +172,19 @@ onForm("sale-save", async f => {
   const coupon = f.coupon_id ? S.coupons.find(c => c.id === f.coupon_id) : null;
   const knownId = f.client_id ? Number(f.client_id) : null;
   if (coupon && !couponIsValid(coupon, { date: f.date, clientId: knownId, targets: S.couponTargets.get(coupon.id) || [] })) return toast("Ese cupón no vale para esta clienta o fecha");
+  if (coupon && knownId && usedCouponIds(S.movements, knownId).has(coupon.id)) return toast(`Esta clienta ya usó el cupón ${coupon.code}`);
   const clientId = await resolveClient(f);
   const discount = couponDiscount(coupon, gross);
   const total = gross - discount;
-  const row = must(await S.sb.from("movements").insert({
+  const { data: row, error } = await S.sb.from("movements").insert({
     client_id: clientId, date: f.date, detail: (f.detail || "").trim().toUpperCase(), total, paid,
     coupon_id: coupon ? coupon.id : null, discount_amount: discount
-  }).select().single());
+  }).select().single();
+  if (error) {
+    // server-side guard: one use per client per coupon (trigger / unique index)
+    if (coupon && /coupon_already_used|movements_coupon_once/.test(error.message)) return toast(`Esta clienta ya usó el cupón ${coupon.code}`);
+    throw error;
+  }
   S.movements.push(map.movement(row));
   closeSheet(); rerender(); scheduleBackup();
   toast(paid >= total ? "Venta anotada ¡y pagada!" : `Venta anotada. Queda debiendo ${fmtMoney(total - paid)}`);
@@ -244,10 +264,18 @@ onForm("mov-save", async f => {
     total = gross - discount;
   } else total = Number(f.total) || 0;
   if (total < 0 || paid < 0) return toast("Los montos no pueden ser negativos");
-  const row = must(await S.sb.from("movements").update({
+  const { data: row, error } = await S.sb.from("movements").update({
     client_id: Number(f.client_id), date: f.date, detail: (f.detail || "").toUpperCase(),
     total, paid, discount_amount: discount
-  }).eq("id", f.id).select().single());
+  }).eq("id", f.id).select().single();
+  if (error) {
+    // moving a coupon sale to a client who already used that coupon
+    if (/coupon_already_used|movements_coupon_once/.test(error.message)) {
+      const c = m.couponId ? S.coupons.find(x => x.id === m.couponId) : null;
+      return toast(`Esa clienta ya usó el cupón ${c ? c.code : ""}`.trim());
+    }
+    throw error;
+  }
   upsertLocal(S.movements, map.movement(row));
   closeSheet(); rerender(); scheduleBackup();
   toast("Movimiento actualizado");

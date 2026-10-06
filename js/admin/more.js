@@ -9,6 +9,7 @@ import { logout } from "../auth.js";
 import { S, map, upsertLocal, removeLocal, deleteOne } from "./store.js";
 import { rerender, renderShell } from "./app.js";
 import { migrateLegacy } from "./migrate.js";
+import { paymentSettingsForm, pendingInfo } from "./payments.js";
 import { exportXlsx, loadXlsx } from "./xlsx.js";
 import { askSheets, explainSheetsError, validSheetsUrl, pushBackup, scheduleBackup } from "./sync.js";
 
@@ -102,11 +103,14 @@ export function vMore() {
   return html`
   <header class="view-head"><h1 class="display-l">Más</h1></header>
   <div class="tiles only-phone">
+    <button class="tile" data-act="go" data-view="pagos">${icon("wallet")}<span>Pagos informados${pendingInfo().count ? html` <b class="badge static">${pendingInfo().count}</b>` : ""}</span></button>
     <button class="tile" data-act="go" data-view="cupones">${icon("ticket")}<span>Cupones</span></button>
     <button class="tile" data-act="go" data-view="difusiones">${icon("megaphone")}<span>Difusiones</span></button>
     <button class="tile" data-act="go" data-view="lugares">${icon("store")}<span>Lugares</span></button>
   </div>
   <button class="tile wide-tile not-phone" data-act="go" data-view="lugares">${icon("store")}<span>Lugares donde compramos (${S.places.length})</span>${icon("chevron")}</button>
+
+  ${paymentSettingsForm()}
 
   <form class="card form" data-form="settings-save">
     <h2 class="h3">${icon("sliders")} Reparto de lo cobrado</h2>

@@ -10,12 +10,14 @@ import { vCoupons, vBroadcasts } from "./promo.js";
 import { vMore, vPlaces } from "./more.js";
 import { clientFormSheet } from "./clients.js";
 import { syncLabel } from "./sync.js";
+import { vPayments, loadPaymentRequests, pendingInfo } from "./payments.js";
 
 const NAV = [
   { id: "inicio", label: "Inicio", icon: "home", phone: true },
   { id: "clientas", label: "Clientas", icon: "users", phone: true },
   { id: "movimientos", label: "Movimientos", icon: "list", phone: true },
   { id: "caja", label: "Caja & Socios", short: "Caja", icon: "box", phone: true },
+  { id: "pagos", label: "Pagos informados", icon: "wallet" },
   { id: "cupones", label: "Cupones", icon: "ticket" },
   { id: "difusiones", label: "Difusiones", icon: "megaphone" },
   { id: "mas", label: "Más", icon: "dots", phone: true }
@@ -23,7 +25,7 @@ const NAV = [
 
 const VIEWS = {
   inicio: vHome, clientas: vClients, movimientos: vMovements, caja: vCash,
-  cupones: vCoupons, difusiones: vBroadcasts, mas: vMore, lugares: vPlaces
+  cupones: vCoupons, difusiones: vBroadcasts, mas: vMore, lugares: vPlaces, pagos: vPayments
 };
 
 export async function startAdmin(app, sb) {
@@ -31,6 +33,7 @@ export async function startAdmin(app, sb) {
   mount(app, html`<div class="boot"><span class="boot-tag" aria-hidden="true"></span><span>Cargando tus datos…</span></div>`);
   try {
     await loadAll();
+    await loadPaymentRequests(); // optional feature: never blocks the app
   } catch (e) {
     console.error(e);
     mount(app, html`<main class="center-screen"><div class="login-card"><h1 class="display-m">No pude cargar los datos</h1>
@@ -42,10 +45,14 @@ export async function startAdmin(app, sb) {
 }
 
 function navItems(cls) {
-  const current = S.view === "lugares" ? "mas" : S.view;
+  const current = S.view === "lugares" || (cls !== "side" && S.view === "pagos") ? "mas" : S.view;
+  const pending = pendingInfo().count;
+  // pending transfers badge: on "Pagos informados" (sidebar) and on "Más" (phone bar, where Pagos lives)
+  const badgeFor = id => pending && (id === "pagos" || (cls !== "side" && id === "mas"))
+    ? html`<b class="badge" aria-label="${pending} pagos por confirmar">${pending}</b>` : "";
   return NAV.filter(n => cls === "side" || n.phone).map(n => html`
     <button class="nav-item ${current === n.id ? "on" : ""}" data-act="go" data-view="${n.id}" aria-current="${current === n.id ? "page" : "false"}">
-      ${icon(n.icon)}<span>${cls === "side" ? n.label : n.short || n.label}</span>
+      ${icon(n.icon)}<span>${cls === "side" ? n.label : n.short || n.label}</span>${badgeFor(n.id)}
     </button>`);
 }
 

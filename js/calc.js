@@ -250,3 +250,32 @@ export function couponDiscount(coupon, gross) {
   const d = coupon.kind === "percent" ? Math.round(g * Math.min(v, 100) / 100) : Math.round(v);
   return Math.min(d, g);
 }
+
+
+/** Coupon ids this client already used (one use per client per coupon). Movements: { clientId, couponId }. */
+export function usedCouponIds(movements, clientId) {
+  return new Set((movements || []).filter(m => m.clientId === clientId && m.couponId).map(m => m.couponId));
+}
+
+/** Coupons valid for a client on a date that she has not used yet. targetsOf(couponId) -> clientIds. */
+export function availableCoupons(coupons, { clientId = null, date = todayISO(), targetsOf = () => [], movements = [] } = {}) {
+  const used = clientId == null ? new Set() : usedCouponIds(movements, clientId);
+  return (coupons || []).filter(c => !used.has(c.id) && couponIsValid(c, { date, clientId, targets: targetsOf(c.id) }));
+}
+// ---------- reported transfers ----------
+/** Pending reported transfers: { count, total }. Requests: { status, amount }. */
+export function pendingPayments(requests) {
+  const pending = (requests || []).filter(r => r.status === "pending");
+  return { count: pending.length, total: pending.reduce((a, r) => a + num(r.amount), 0) };
+}
+
+/** Balance if every pending transfer were confirmed (info only; the real balance ignores them). */
+export function balanceWithPending(balance, requests) {
+  return num(balance) - pendingPayments(requests).total;
+}
+
+/** Amount a client may report: > 0, at most her balance, max 2 decimals. Returns the number or null. */
+export function validTransferAmount(value, balance) {
+  const x = Math.round(Number(value) * 100) / 100;
+  return Number.isFinite(x) && x > 0 && x <= num(balance) && x <= 10000000 ? x : null;
+}
