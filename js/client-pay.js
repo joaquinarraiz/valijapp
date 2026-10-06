@@ -90,9 +90,10 @@ function paintAmount() {
 onAction("pay-open", () => {
   const b = C.balance();
   const i = C.S().payInfo || {};
-  const row = (label, value) => value ? html`<div class="pay-row">
+  // only what she has to paste in her bank app gets a "Copiar" button
+  const row = (label, value, copy = true) => value ? html`<div class="pay-row">
       <span class="muted small">${label}</span><strong>${value}</strong>
-      <button type="button" class="btn ghost sm" data-act="pay-copy" data-value="${value}">Copiar</button></div>` : "";
+      ${copy ? html`<button type="button" class="btn ghost sm" data-act="pay-copy" data-value="${value}">Copiar</button>` : html`<span></span>`}</div>` : "";
   openSheet(html`
   <h2 class="display-m">Pagar por transferencia</h2>
   <form class="form" data-form="pay-send" id="payForm">
@@ -103,7 +104,7 @@ onAction("pay-open", () => {
       <input type="number" name="other" min="1" max="${b}" step="1" inputmode="numeric" placeholder="¿Cuánto?" hidden data-input="pay-other" aria-label="Otro monto">
     </fieldset>
     <section class="pay-box">
-      ${row("Alias", i.alias)}${row("CVU", i.cvu)}${row("Titular", i.holder)}${row("Banco", i.bank)}
+      ${row("Alias", i.alias)}${row("CVU", i.cvu)}${row("Titular", i.holder, false)}${row("Banco", i.bank, false)}
       <div class="pay-row"><span class="muted small">Monto</span><strong id="payAmountText">${fmtMoney(b)}</strong>
         <button type="button" class="btn ghost sm" data-act="pay-copy" data-value="${String(b)}" id="payAmountCopy">Copiar</button></div>
     </section>
