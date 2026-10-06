@@ -112,7 +112,7 @@ onAction("pr-confirm", d => {
   <form class="form" data-form="pr-confirm">
     <input type="hidden" name="id" value="${r.id}">
     <label>Monto que entró de verdad ($)<input type="number" name="amount" min="1" step="0.01" required value="${r.amount}"></label>
-    <p class="small muted">Se anota como pago de hoy con el detalle “Transferencia”.</p>
+    <p class="small muted">Se anota como pago de hoy con el detalle “A SU FAVOR · TRANSFERENCIA”.</p>
     <div class="form-actions">
       <button type="button" class="btn ghost" data-act="sheet-close">Cancelar</button>
       <button class="btn pay" type="submit">Confirmar pago</button>

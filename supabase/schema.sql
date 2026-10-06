@@ -565,7 +565,7 @@ begin
   insert into public.movements (client_id, date, detail, total, paid)
   values (r.client_id,
           (now() at time zone 'America/Argentina/Buenos_Aires')::date,
-          left('Transferencia' || coalesce(' · ' || nullif(trim(r.note), ''), ''), 200),
+          left('A SU FAVOR · TRANSFERENCIA' || coalesce(' · ' || nullif(trim(r.note), ''), ''), 200),
           0, v_amount)
   returning * into v_mov;
   update public.payment_requests
