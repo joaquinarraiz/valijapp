@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
@@ -48,12 +48,15 @@ test("split without loans", () => {
   assert.deepEqual([st.share1, st.share2, st.box], [22500, 22500, 45000]);
 });
 
-test("split with a loan being returned: return is paid before anyone gets their %", () => {
+test("split with a loan: collections are reserved for the loan before anyone gets their %", () => {
   const st = tripStats(data, trips[1]);
   assert.equal(st.collected, 160000);
   assert.equal(st.returned, 100000);
-  assert.equal(st.base, 60000);
-  assert.deepEqual([st.share1, st.share2, st.box], [15000, 15000, 30000]);
+  // 300k loan on 07-01: both July collections (60k + 100k) are reserved; the 100k return uses that reserve
+  assert.equal(st.reserved, 160000);
+  assert.equal(st.returnDeducted, 0);
+  assert.equal(st.base, 0);
+  assert.deepEqual([st.share1, st.share2, st.box], [0, 0, 0]);
   // returning more than collected leaves nothing to split (never negative)
   assert.deepEqual(splitCollected(50000, 80000, settings), { base: 0, share1: 0, share2: 0, box: 0 });
 });
@@ -202,6 +205,84 @@ test("coupons: one use per client, used ones are not offered again", () => {
   assert.deepEqual([...usedCouponIds(movements, 7)], ["a"]);
   assert.deepEqual(availableCoupons(coupons, { clientId: 7, date: "2026-10-06", targetsOf, movements }).map(c => c.id), ["b"]);
   assert.deepEqual(availableCoupons(coupons, { clientId: 9, date: "2026-10-06", targetsOf, movements }).map(c => c.id), ["a"]);
+});
+
+// ---------- "reserve first, then split" (loans) ----------
+const S25 = { partner1Pct: 25, partner2Pct: 25, cashSince: "2026-09-01", cashInitial: 0 };
+const sept = [{ id: "s", name: "SEPTIEMBRE 2026", startsOn: "2026-09-01", investment: 0 }];
+const pay = (date, paid, id = date + paid) => ({ id, clientId: 1, date, total: 0, paid });
+const loanCash = (kind, date, amount, person = "YANINA", seq = 0) => ({ id: kind + date + amount + person, kind, person, date, amount, seq });
+
+test("split: live September scenario (700k returned + 800k still reserved) -> base 1.923.000", () => {
+  const data = {
+    trips: sept, settings: S25,
+    movements: [
+      pay("2026-09-01", 1000000), pay("2026-09-05", 500000), pay("2026-09-07", 1008000),
+      pay("2026-09-24", 600000), pay("2026-09-28", 315000)
+    ],
+    cash: [
+      loanCash("PRESTAMO", "2026-09-04", 700000, "YANINA", 1),
+      loanCash("DEVOLUCION", "2026-09-08", 700000, "YANINA", 2),
+      loanCash("PRESTAMO", "2026-09-23", 400000, "YANINA", 3),
+      loanCash("PRESTAMO", "2026-09-23", 400000, "ALE", 4)
+    ]
+  };
+  const st = tripStats(data, sept[0]);
+  assert.equal(st.collected, 3423000);
+  assert.equal(st.reserved, 1500000);      // 700k (returned) + 800k (still outstanding)
+  assert.equal(st.returnDeducted, 0);      // the return was fully covered by reserves: no double deduction
+  assert.equal(st.base, 1923000);
+  assert.equal(st.share1, 480750);
+  assert.equal(st.share2, 480750);
+  const lr = loanReserves(data);
+  assert.deepEqual([lr.outstanding, lr.pool], [800000, 800000]);
+});
+
+test("split: loan not yet covered -> every collection is reserved, base 0", () => {
+  const data = { trips: sept, settings: S25, movements: [pay("2026-09-10", 100000), pay("2026-09-11", 50000)], cash: [loanCash("PRESTAMO", "2026-09-05", 500000)] };
+  const st = tripStats(data, sept[0]);
+  assert.deepEqual([st.collected, st.reserved, st.base, st.share1], [150000, 150000, 0, 0]);
+  assert.deepEqual(loanReserves(data).pool, 150000);
+});
+
+test("split: return before collections covered the loan -> the uncovered part is deducted on return", () => {
+  const data = { trips: sept, settings: S25, movements: [pay("2026-09-06", 100000), pay("2026-09-20", 400000)],
+    cash: [loanCash("PRESTAMO", "2026-09-05", 300000), loanCash("DEVOLUCION", "2026-09-10", 300000)] };
+  const st = tripStats(data, sept[0]);
+  // 100k reserved, return uses it + 200k extra; later collections are free
+  assert.deepEqual([st.reserved, st.returnDeducted, st.deducted, st.base], [100000, 200000, 300000, 200000]);
+});
+
+test("split: return after full coverage -> no double deduction", () => {
+  const data = { trips: sept, settings: S25, movements: [pay("2026-09-06", 500000), pay("2026-09-25", 100000)],
+    cash: [loanCash("PRESTAMO", "2026-09-05", 300000), loanCash("DEVOLUCION", "2026-09-20", 300000)] };
+  const st = tripStats(data, sept[0]);
+  assert.deepEqual([st.reserved, st.returnDeducted, st.base], [300000, 0, 300000]);
+  assert.deepEqual([loanReserves(data).outstanding, loanReserves(data).pool], [0, 0]);
+});
+
+test("split: loan spanning two periods -> reserve continues into the next period", () => {
+  const two = [{ id: "a", name: "A", startsOn: "2026-08-01", investment: 0 }, { id: "b", name: "B", startsOn: "2026-09-01", investment: 0 }];
+  const data = { trips: two, settings: S25, movements: [pay("2026-08-20", 200000), pay("2026-09-03", 500000)],
+    cash: [loanCash("PRESTAMO", "2026-08-15", 600000)] };
+  const a = tripStats(data, two[0]), b = tripStats(data, two[1]);
+  assert.deepEqual([a.reserved, a.base], [200000, 0]);
+  assert.deepEqual([b.reserved, b.base], [400000, 100000]);
+});
+
+test("split: same-day order is loans, then collections, then returns", () => {
+  const data = { trips: sept, settings: S25, movements: [pay("2026-09-05", 100000)],
+    cash: [loanCash("DEVOLUCION", "2026-09-05", 100000, "X", 1), loanCash("PRESTAMO", "2026-09-05", 100000, "X", 2)] };
+  const st = tripStats(data, sept[0]);
+  assert.deepEqual([st.reserved, st.returnDeducted, st.base], [100000, 0, 0]);
+});
+
+test("split rule does not touch the cash box", () => {
+  const data = { trips: sept, settings: S25, movements: [pay("2026-09-06", 500000), pay("2026-09-25", 100000)],
+    cash: [loanCash("PRESTAMO", "2026-09-05", 300000), loanCash("DEVOLUCION", "2026-09-20", 100000), { id: "r", kind: "RETIRO", person: "J", date: "2026-09-26", amount: 50000 }] };
+  // real money: 600k collected + 300k loan − 100k returned − 50k withdrawn
+  assert.equal(cashDetail(data).balance, 750000);
+  assert.equal(cashBalanceAfter(data, "2026-09-26", "r"), 750000);
 });
 
 console.log(`\n${passed} tests passed`);

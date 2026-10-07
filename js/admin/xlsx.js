@@ -44,11 +44,11 @@ export async function exportXlsx() {
   XLSX.utils.book_append_sheet(wb, wsM, "CUENTA CORRIENTE");
 
   // RESUMEN
-  const fr = [["PERIODO", "DESDE", "INVERSION", "VENDIDO", "COBRADO", "DEVUELTO", "A REPARTIR", `${s.partner1Name} ${s.partner1Pct}%`, `${s.partner2Name} ${s.partner2Pct}%`, "SOBRO DEL PERIODO"]];
+  const fr = [["PERIODO", "DESDE", "INVERSION", "VENDIDO", "COBRADO", "PARA PRESTAMOS", "A REPARTIR", `${s.partner1Name} ${s.partner1Pct}%`, `${s.partner2Name} ${s.partner2Pct}%`, "SOBRO DEL PERIODO"]];
   const t = [0, 0, 0, 0, 0, 0, 0, 0];
   sortTrips(S.trips).forEach(v => {
     const st = tripStats(data, v);
-    const row = [v.investment, st.sold, st.collected, st.returned, st.base, st.share1, st.share2, st.box];
+    const row = [v.investment, st.sold, st.collected, st.deducted, st.base, st.share1, st.share2, st.box];
     row.forEach((x, i) => t[i] += x);
     fr.push([v.name, fmtDate(v.startsOn), ...row]);
   });

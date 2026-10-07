@@ -81,22 +81,70 @@ export function movementsOfTrip(data, trip) {
 }
 
 /**
- * Period stats with the partner split (legacy statsDeViaje).
- * A loan returned (DEVOLUCION) inside the period is paid BEFORE splitting:
- * nobody gets their % until the debt is settled.
+ * "Reserve first, then split": while a loan is outstanding, collections are set aside to return it
+ * before anyone earns their %. Events run chronologically across ALL time
+ * (same date: loans, then collections, then returns):
+ *  - PRESTAMO A:   outstanding += A
+ *  - collection P: take = min(P, outstanding − pool); pool += take  → reserve in the collection's period
+ *  - DEVOLUCION R: used = min(R, pool); pool −= used; extra = R − used → deducted in the return's period
+ *                  (a loan returned before collections covered it); outstanding −= R (floor 0)
+ * Only the partner split uses this; the cash box keeps showing real money.
+ * Returns { reserves: [{date, amount}], extras: [{date, amount}], outstanding, pool }.
  */
-export function tripStats(data, trip) {
+export function loanReserves(data) {
+  const ORDER = { PRESTAMO: 0, PAGO: 1, DEVOLUCION: 2 };
+  const events = [];
+  for (const c of data.cash) {
+    if (c.date && (c.kind === "PRESTAMO" || c.kind === "DEVOLUCION")) events.push({ date: c.date, kind: c.kind, amount: num(c.amount), seq: num(c.seq) });
+  }
+  for (const m of data.movements) {
+    if (m.date && num(m.paid) > 0) events.push({ date: m.date, kind: "PAGO", amount: num(m.paid), seq: 0 });
+  }
+  events.sort((a, b) => a.date.localeCompare(b.date) || ORDER[a.kind] - ORDER[b.kind] || a.seq - b.seq);
+  let outstanding = 0, pool = 0;
+  const reserves = [], extras = [];
+  for (const e of events) {
+    if (e.kind === "PRESTAMO") outstanding += e.amount;
+    else if (e.kind === "PAGO") {
+      const take = Math.min(e.amount, Math.max(0, outstanding - pool));
+      if (take > 0) { pool += take; reserves.push({ date: e.date, amount: take }); }
+    } else {
+      const used = Math.min(e.amount, pool);
+      pool -= used;
+      const extra = e.amount - used;
+      if (extra > 0) extras.push({ date: e.date, amount: extra });
+      outstanding = Math.max(0, outstanding - e.amount);
+    }
+  }
+  return { reserves, extras, outstanding, pool };
+}
+
+/**
+ * Period stats with the partner split (legacy statsDeViaje, with the "reserve first" loan rule).
+ * base = collected − reserved for loans (by collection date) − returns not covered by reserves (by return date).
+ * `returned` keeps the total of loan returns dated in the period (informative).
+ */
+export function tripStats(data, trip, reservesState = loanReserves(data)) {
   const { from, to } = tripRange(data.trips, trip);
+  const vs = sortTrips(data.trips);
+  const isFirst = vs.length && vs[0].id === trip.id;
   const movs = movementsOfTrip(data, trip);
   const sold = movs.reduce((a, m) => a + num(m.total), 0);
   const collected = movs.reduce((a, m) => a + num(m.paid), 0);
   const returned = cashInRange(data.cash, from, to).filter(c => c.kind === "DEVOLUCION").reduce((a, c) => a + num(c.amount), 0);
-  return { movs: movs.length, sold, collected, returned, from, to, ...splitCollected(collected, returned, data.settings) };
+  // reserves follow the collections (same period rule as movements: the first trip absorbs earlier dates)
+  const reserved = reservesState.reserves
+    .filter(r => (isFirst || r.date >= from) && (!to || r.date < to)).reduce((a, r) => a + r.amount, 0);
+  // uncovered returns follow the return date (same range rule as the old one)
+  const returnDeducted = reservesState.extras
+    .filter(x => (!from || x.date >= from) && (!to || x.date < to)).reduce((a, x) => a + x.amount, 0);
+  const deducted = reserved + returnDeducted;
+  return { movs: movs.length, sold, collected, returned, reserved, returnDeducted, deducted, from, to, ...splitCollected(collected, deducted, data.settings) };
 }
 
-/** The split itself, isolated so it can be tested on its own. */
-export function splitCollected(collected, returned, settings) {
-  const base = Math.max(0, collected - returned);
+/** The split itself, isolated so it can be tested on its own. `deducted` = money set aside for loans. */
+export function splitCollected(collected, deducted, settings) {
+  const base = Math.max(0, collected - deducted);
   const share1 = base * num(settings.partner1Pct) / 100;
   const share2 = base * num(settings.partner2Pct) / 100;
   return { base, share1, share2, box: base - share1 - share2 };
@@ -194,25 +242,28 @@ export function dashboard(data, today = todayISO()) {
   const collectedHistoric = data.movements.reduce((a, m) => a + num(m.paid), 0);
   const vs = sortTrips(data.trips);
   const currentTrip = vs.length ? vs[vs.length - 1] : null;
-  const current = currentTrip ? tripStats(data, currentTrip) : null;
+  const reserves = loanReserves(data);
+  const current = currentTrip ? tripStats(data, currentTrip, reserves) : null;
   const withdrawn1 = current ? withdrawnIn(data.cash, PARTNER_1, current.from, current.to) : 0;
   const withdrawn2 = current ? withdrawnIn(data.cash, PARTNER_2, current.from, current.to) : 0;
   return {
     totalDebt, debtors, topBuyers, inactive, inactiveDays: days, collectedHistoric,
     currentTrip, current, withdrawn1, withdrawn2,
     loans: pendingLoans(data.cash), totalLoans: totalPendingLoans(data.cash),
+    loanPool: reserves.pool, loanOutstanding: reserves.outstanding,
     cash: cashDetail(data)
   };
 }
 
 /** "Resumen por período" table with totals (legacy vResumen). */
 export function periodSummary(data) {
-  const rows = sortTrips(data.trips).map(trip => ({ trip, st: tripStats(data, trip) }));
+  const reserves = loanReserves(data);
+  const rows = sortTrips(data.trips).map(trip => ({ trip, st: tripStats(data, trip, reserves) }));
   const total = rows.reduce((a, { trip, st }) => ({
     investment: a.investment + num(trip.investment), sold: a.sold + st.sold, collected: a.collected + st.collected,
-    returned: a.returned + st.returned, base: a.base + st.base,
+    returned: a.returned + st.returned, deducted: a.deducted + st.deducted, base: a.base + st.base,
     share1: a.share1 + st.share1, share2: a.share2 + st.share2, box: a.box + st.box
-  }), { investment: 0, sold: 0, collected: 0, returned: 0, base: 0, share1: 0, share2: 0, box: 0 });
+  }), { investment: 0, sold: 0, collected: 0, returned: 0, deducted: 0, base: 0, share1: 0, share2: 0, box: 0 });
   return { rows, total };
 }
 

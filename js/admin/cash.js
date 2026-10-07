@@ -212,7 +212,7 @@ function vPartners() {
   const loans = pendingLoans(S.cash);
   const months = collectedByMonth(S.movements).slice(0, 12);
   return html`
-  <p class="hint">Lo cobrado en cada período se reparte: ${s.partner1Name} ${s.partner1Pct}%, ${s.partner2Name} ${s.partner2Pct}% y el resto queda en la caja para reinvertir. Mientras haya un préstamo sin devolver, nadie cobra su %: la devolución se descuenta de lo cobrado antes de repartir.</p>
+  <p class="hint">Lo cobrado en cada período se reparte: ${s.partner1Name} ${s.partner1Pct}%, ${s.partner2Name} ${s.partner2Pct}% y el resto queda en la caja para reinvertir. Mientras haya un préstamo sin devolver, lo que se cobra se reserva primero para devolverlo y recién después se reparte. La caja muestra igual la plata real.</p>
   <div class="stats">
     ${stat({ label: "Total cobrado", value: fmtMoney(total.collected), tone: "paid" })}
     ${stat({ label: `Total ${s.partner1Name} (${s.partner1Pct}%)`, value: fmtMoney(total.share1), tone: "p1", sub: w1 ? `ya retiró ${fmtMoney(w1)} · le queda ${fmtMoney(total.share1 - w1)}` : "" })}
@@ -223,15 +223,15 @@ function vPartners() {
   <section class="card flush">
     <h2 class="h3 pad">Resumen por período</h2>
     <div class="table-wrap"><table class="grid-table">
-      <thead><tr><th>Período</th><th>Desde</th><th class="num">Inversión</th><th class="num">Vendido</th><th class="num">Cobrado</th><th class="num">Devuelto</th><th class="num">${s.partner1Name}</th><th class="num">${s.partner2Name}</th><th class="num">Sobró</th></tr></thead>
+      <thead><tr><th>Período</th><th>Desde</th><th class="num">Inversión</th><th class="num">Vendido</th><th class="num">Cobrado</th><th class="num">Para préstamos</th><th class="num">${s.partner1Name}</th><th class="num">${s.partner2Name}</th><th class="num">Sobró</th></tr></thead>
       <tbody>
         ${rows.map(({ trip, st }) => html`<tr>
           <td><strong>${trip.name}</strong></td><td>${fmtDate(st.from)}</td>
           <td class="num">${trip.investment ? fmtMoney(trip.investment) : "—"}</td><td class="num">${fmtMoney(st.sold)}</td>
-          <td class="num"><strong>${fmtMoney(st.collected)}</strong></td><td class="num">${st.returned ? fmtMoney(st.returned) : "—"}</td>
+          <td class="num"><strong>${fmtMoney(st.collected)}</strong></td><td class="num">${st.deducted ? fmtMoney(st.deducted) : "—"}</td>
           <td class="num">${fmtMoney(st.share1)}</td><td class="num">${fmtMoney(st.share2)}</td><td class="num">${fmtMoney(st.box)}</td></tr>`)}
         <tr class="total"><td>Total</td><td></td><td class="num">${fmtMoney(total.investment)}</td><td class="num">${fmtMoney(total.sold)}</td>
-          <td class="num">${fmtMoney(total.collected)}</td><td class="num">${fmtMoney(total.returned)}</td><td class="num">${fmtMoney(total.share1)}</td>
+          <td class="num">${fmtMoney(total.collected)}</td><td class="num">${fmtMoney(total.deducted)}</td><td class="num">${fmtMoney(total.share1)}</td>
           <td class="num">${fmtMoney(total.share2)}</td><td class="num">${fmtMoney(total.box)}</td></tr>
       </tbody></table></div>
   </section>
@@ -263,7 +263,7 @@ function vTrips() {
       <div class="stats four">
         ${stat({ label: "Inversión", value: fmtMoney(v.investment) })}
         ${stat({ label: "Vendido", value: fmtMoney(st.sold) })}
-        ${stat({ label: "Cobrado", value: fmtMoney(st.collected), sub: st.returned ? `− ${fmtMoney(st.returned)} devueltos = ${fmtMoney(st.base)} a repartir` : "", tone: "paid" })}
+        ${stat({ label: "Cobrado", value: fmtMoney(st.collected), sub: st.deducted ? `− ${fmtMoney(st.deducted)} para préstamos = ${fmtMoney(st.base)} a repartir` : "", tone: "paid" })}
         ${stat({ label: "Cobrado − inversión", value: fmtMoney(balance), tone: balance >= 0 ? "paid" : "owes" })}
       </div>
       <p class="small">${st.movs} movimientos · ${S.settings.partner1Name}: <strong>${fmtMoney(st.share1)}</strong>${w1 ? ` (retiró ${fmtMoney(w1)})` : ""} · ${S.settings.partner2Name}: <strong>${fmtMoney(st.share2)}</strong>${w2 ? ` (retiró ${fmtMoney(w2)})` : ""} · Caja: <strong>${fmtMoney(st.box)}</strong></p>
