@@ -1,6 +1,6 @@
 // Inicio: the legacy dashboard, redesigned.
 import { html, onAction } from "../dom.js";
-import { fmtMoney, fmtDate } from "../format.js";
+import { fmtMoney } from "../format.js";
 import { dashboard, daysSince, monthStats, monthLabel, todayISO } from "../calc.js";
 import { luggageTag, stat } from "../ui.js";
 import { S, calcData, clientName, partnerName } from "./store.js";
@@ -16,10 +16,8 @@ export function vHome() {
   const p1 = S.settings.partner1Name, p2 = S.settings.partner2Name;
   const lastCash = [...S.cash].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 8);
   const notActivated = S.clients.filter(c => !c.userId).length;
-  // what was taken out of the split: money still reserved for open loans vs loans already returned
+  // money of the current trip still reserved for open loans (the full breakdown lives in Caja & Socios)
   const openReserve = st ? Math.min(d.loanPool, st.deducted) : 0;
-  const returnedPart = st ? st.deducted - openReserve : 0;
-  const deductionParts = ` (${[returnedPart > 0 && "devuelto " + fmtMoney(returnedPart), openReserve > 0 && "reservado " + fmtMoney(openReserve)].filter(Boolean).join(" · ")})`;
   const partnerCard = (name, share, withdrawn, tone) => stat({
     label: `${name} · período`, value: fmtMoney(share - withdrawn), tone,
     sub: `ganó ${fmtMoney(share)}${withdrawn ? " · ya retiró " + fmtMoney(withdrawn) : ""}${openReserve > 0 ? " · se reservan " + fmtMoney(openReserve) + " para préstamos abiertos" : ""}`
@@ -45,8 +43,6 @@ export function vHome() {
     ${stat({ label: "Cobrado histórico", value: fmtMoney(d.collectedHistoric), tone: "paid" })}
     ${stat({ label: `Vendido ${monthLabel(month.month)}`, value: fmtMoney(month.sold), sub: "mes calendario", tone: "month-sold" })}
     ${stat({ label: `Cobrado ${monthLabel(month.month)}`, value: fmtMoney(month.collected), sub: `${month.movements} movimientos este mes`, tone: "month-paid" })}
-    ${st ? stat({ label: `Viaje ${d.currentTrip.name}`, value: fmtMoney(st.collected), tone: "trip",
-      sub: `cobrado desde ${fmtDate(st.from)}${st.deducted > 0 ? " · se reparte sobre " + fmtMoney(st.base) + deductionParts : ""}` }) : ""}
     ${st ? partnerCard(p1, st.share1, d.withdrawn1, "p1") : ""}
     ${st ? partnerCard(p2, st.share2, d.withdrawn2, "p2") : ""}
     ${d.totalLoans > 0 ? stat({ label: "Préstamos a devolver", value: fmtMoney(d.totalLoans), sub: d.loans.map(([q, v]) => q + ": " + fmtMoney(v)).join(" · ") + ` · reservado ${fmtMoney(d.loanPool)} de ${fmtMoney(d.loanOutstanding)}`, tone: "owes" }) : ""}

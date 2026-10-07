@@ -1,5 +1,5 @@
 // ValijApp service worker: caches only the app shell. Supabase / API responses are never cached.
-const VERSION = "valijapp-v2-12";
+const VERSION = "valijapp-v2-13";
 const SHELL = [
   "./", "index.html", "css/app.css", "manifest.webmanifest",
   "js/main.js", "js/config.js", "js/supabase.js", "js/dom.js", "js/format.js", "js/calc.js", "js/legacy.js",
