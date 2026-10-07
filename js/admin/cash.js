@@ -5,7 +5,7 @@ import { must } from "../supabase.js";
 import { fmtMoney, fmtDate } from "../format.js";
 import {
   cashDetail, cashSign, cashBalanceAfter, sortCash, withdrawnSinceCut, withdrawnIn, withdrawnTotal,
-  tripStats, periodSummary, pendingLoans, totalPendingLoans, sortTrips, collectedByMonth, todayISO
+  tripStats, periodSummary, pendingLoans, totalPendingLoans, sortTrips, monthlyHistory, monthLabel, todayISO
 } from "../calc.js";
 import { norm } from "../legacy.js";
 import { luggageTag, stat } from "../ui.js";
@@ -210,7 +210,8 @@ function vPartners() {
   const s = S.settings;
   const w1 = withdrawnTotal(S.cash, "J"), w2 = withdrawnTotal(S.cash, "M");
   const loans = pendingLoans(S.cash);
-  const months = collectedByMonth(S.movements).slice(0, 12);
+  const months = monthlyHistory(data);
+  const monthTotal = months.reduce((a, m) => ({ sold: a.sold + m.sold, collected: a.collected + m.collected }), { sold: 0, collected: 0 });
   return html`
   <p class="hint">Lo cobrado en cada período se reparte: ${s.partner1Name} ${s.partner1Pct}%, ${s.partner2Name} ${s.partner2Pct}% y el resto queda en la caja para reinvertir. Mientras haya un préstamo sin devolver, lo que se cobra se reserva primero para devolverlo y recién después se reparte. La caja muestra igual la plata real.</p>
   <div class="stats">
@@ -236,10 +237,12 @@ function vPartners() {
       </tbody></table></div>
   </section>
   <section class="card flush">
-    <h2 class="h3 pad">Cobrado por mes</h2>
+    <h2 class="h3 pad">Por mes</h2>
+    <p class="hint pad">Mes calendario (del 1 al último día). Es informativo: el reparto entre socios sigue siendo por viaje.</p>
     <div class="table-wrap"><table class="grid-table">
       <thead><tr><th>Mes</th><th class="num">Vendido</th><th class="num">Cobrado</th></tr></thead>
-      <tbody>${months.map(m => html`<tr><td>${m.month.slice(5)}/${m.month.slice(2, 4)}</td><td class="num">${fmtMoney(m.sold)}</td><td class="num"><strong>${fmtMoney(m.collected)}</strong></td></tr>`)}</tbody>
+      <tbody>${months.map(m => html`<tr><td>${monthLabel(m.month)}</td><td class="num">${m.sold ? fmtMoney(m.sold) : "—"}</td><td class="num"><strong>${m.collected ? fmtMoney(m.collected) : "—"}</strong></td></tr>`)}
+        <tr class="total"><td>Total</td><td class="num">${fmtMoney(monthTotal.sold)}</td><td class="num">${fmtMoney(monthTotal.collected)}</td></tr></tbody>
     </table></div>
   </section>`;
 }

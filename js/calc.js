@@ -280,6 +280,54 @@ export function collectedByMonth(movements) {
   return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
 }
 
+// ---------- calendar months (informative; the partner split stays per trip) ----------
+export const MONTH_NAMES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+
+/** "2026-10" -> "OCTUBRE 2026" */
+export function monthLabel(ym) {
+  const [y, m] = String(ym).split("-");
+  return MONTH_NAMES[Number(m) - 1] + " " + y;
+}
+
+/**
+ * One calendar month ("YYYY-MM"): sold = sum of sale totals (stored already net of any coupon discount),
+ * collected = sum of paid, movements = rows dated in that month.
+ */
+export function monthStats(data, ym) {
+  let sold = 0, collected = 0, movements = 0;
+  for (const m of data.movements) {
+    if (!m.date || m.date.slice(0, 7) !== ym) continue;
+    sold += num(m.total);
+    collected += num(m.paid);
+    movements++;
+  }
+  return { month: ym, sold, collected, movements };
+}
+
+/** Every month from the first movement to the current month (zeros included), newest first. */
+export function monthlyHistory(data, today = todayISO()) {
+  const dates = data.movements.map(m => m.date).filter(Boolean).sort();
+  const last = today.slice(0, 7);
+  const first = dates.length ? (dates[0].slice(0, 7) < last ? dates[0].slice(0, 7) : last) : last;
+  const byMonth = new Map();
+  for (const m of data.movements) {
+    if (!m.date) continue;
+    const k = m.date.slice(0, 7);
+    const s = byMonth.get(k) || { month: k, sold: 0, collected: 0, movements: 0 };
+    s.sold += num(m.total); s.collected += num(m.paid); s.movements++;
+    byMonth.set(k, s);
+  }
+  const out = [];
+  let [y, mo] = last.split("-").map(Number);
+  for (;;) {
+    const k = y + "-" + String(mo).padStart(2, "0");
+    out.push(byMonth.get(k) || { month: k, sold: 0, collected: 0, movements: 0 });
+    if (k <= first) break;
+    mo--; if (mo === 0) { mo = 12; y--; }
+  }
+  return out;
+}
+
 // ---------- coupons ----------
 /**
  * Is a coupon usable for a client on a date?

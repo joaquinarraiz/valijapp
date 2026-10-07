@@ -1,7 +1,7 @@
 // Inicio: the legacy dashboard, redesigned.
 import { html, onAction } from "../dom.js";
 import { fmtMoney, fmtDate } from "../format.js";
-import { dashboard, daysSince } from "../calc.js";
+import { dashboard, daysSince, monthStats, monthLabel, todayISO } from "../calc.js";
 import { luggageTag, stat } from "../ui.js";
 import { S, calcData, clientName, partnerName } from "./store.js";
 import { go } from "./app.js";
@@ -12,6 +12,7 @@ import { paymentsHomeCard } from "./payments.js";
 export function vHome() {
   const d = dashboard(calcData());
   const st = d.current;
+  const month = monthStats(calcData(), todayISO().slice(0, 7)); // current calendar month (informative)
   const p1 = S.settings.partner1Name, p2 = S.settings.partner2Name;
   const lastCash = [...S.cash].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 8);
   const notActivated = S.clients.filter(c => !c.userId).length;
@@ -42,7 +43,10 @@ export function vHome() {
   <div class="stats">
     ${stat({ label: "Deuda total", value: fmtMoney(d.totalDebt), sub: `${d.debtors.length} clientas deben`, tone: "owes" })}
     ${stat({ label: "Cobrado histórico", value: fmtMoney(d.collectedHistoric), tone: "paid" })}
-    ${st ? stat({ label: `Cobrado ${d.currentTrip.name}`, value: fmtMoney(st.collected), sub: `desde ${fmtDate(st.from)}${st.deducted > 0 ? " · se reparte sobre " + fmtMoney(st.base) + deductionParts : ""}` }) : ""}
+    ${stat({ label: `Vendido ${monthLabel(month.month)}`, value: fmtMoney(month.sold), sub: "mes calendario", tone: "month-sold" })}
+    ${stat({ label: `Cobrado ${monthLabel(month.month)}`, value: fmtMoney(month.collected), sub: `${month.movements} movimientos este mes`, tone: "month-paid" })}
+    ${st ? stat({ label: `Viaje ${d.currentTrip.name}`, value: fmtMoney(st.collected), tone: "trip",
+      sub: `cobrado desde ${fmtDate(st.from)}${st.deducted > 0 ? " · se reparte sobre " + fmtMoney(st.base) + deductionParts : ""}` }) : ""}
     ${st ? partnerCard(p1, st.share1, d.withdrawn1, "p1") : ""}
     ${st ? partnerCard(p2, st.share2, d.withdrawn2, "p2") : ""}
     ${d.totalLoans > 0 ? stat({ label: "Préstamos a devolver", value: fmtMoney(d.totalLoans), sub: d.loans.map(([q, v]) => q + ": " + fmtMoney(v)).join(" · ") + ` · reservado ${fmtMoney(d.loanPool)} de ${fmtMoney(d.loanOutstanding)}`, tone: "owes" }) : ""}

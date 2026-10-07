@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
@@ -283,6 +283,23 @@ test("split rule does not touch the cash box", () => {
   // real money: 600k collected + 300k loan − 100k returned − 50k withdrawn
   assert.equal(cashDetail(data).balance, 750000);
   assert.equal(cashBalanceAfter(data, "2026-09-26", "r"), 750000);
+});
+
+test("calendar months: stats and full history with empty months", () => {
+  const data = { movements: [
+    { date: "2026-08-30", total: 10000, paid: 0, discountAmount: 0 },
+    { date: "2026-10-02", total: 18000, paid: 5000, discountAmount: 2000 }, // total already net of the coupon
+    { date: "2026-10-05", total: 0, paid: 7000 },
+    { date: "2026-10-31", total: 1000, paid: 1000 }
+  ] };
+  assert.deepEqual(monthStats(data, "2026-10"), { month: "2026-10", sold: 19000, collected: 13000, movements: 3 });
+  assert.deepEqual(monthStats(data, "2026-09"), { month: "2026-09", sold: 0, collected: 0, movements: 0 });
+  const h = monthlyHistory(data, "2026-11-03");
+  assert.deepEqual(h.map(x => x.month), ["2026-11", "2026-10", "2026-09", "2026-08"]);
+  assert.deepEqual([h[0].sold, h[2].collected, h[3].sold], [0, 0, 10000]);
+  assert.deepEqual(monthlyHistory({ movements: [] }, "2026-10-07").map(x => x.month), ["2026-10"]);
+  assert.equal(monthlyHistory({ movements: [{ date: "2025-12-22", total: 1, paid: 0 }] }, "2026-01-02").length, 2); // across a year
+  assert.equal(monthLabel("2026-10"), "OCTUBRE 2026");
 });
 
 console.log(`\n${passed} tests passed`);

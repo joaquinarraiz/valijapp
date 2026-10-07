@@ -1,6 +1,6 @@
 // Excel export in the legacy format (same sheets and columns), plus an ID column so re-imports never duplicate.
 import { fmtDate } from "../format.js";
-import { cashDetail, clientSummaries, sortCash, sortTrips, tripStats, todayISO } from "../calc.js";
+import { cashDetail, clientSummaries, sortCash, sortTrips, tripStats, todayISO, monthlyHistory, monthLabel } from "../calc.js";
 import { S, calcData, clientById, partnerName } from "./store.js";
 
 const XLSX_URL = new URL("../vendor/xlsx-0.18.5.full.min.js", import.meta.url).href; // vendored, same origin
@@ -56,6 +56,15 @@ export async function exportXlsx() {
   const wsR = XLSX.utils.aoa_to_sheet(fr);
   wsR["!cols"] = fr[0].map((_, i) => ({ wch: i === 0 ? 18 : 14 }));
   XLSX.utils.book_append_sheet(wb, wsR, "RESUMEN");
+
+  // MENSUAL (calendar months, newest first)
+  const fmo = [["MES", "VENDIDO", "COBRADO"]];
+  let tmS = 0, tmC = 0;
+  monthlyHistory(data).forEach(m => { fmo.push([monthLabel(m.month), m.sold, m.collected]); tmS += m.sold; tmC += m.collected; });
+  fmo.push(["TOTAL", tmS, tmC]);
+  const wsMo = XLSX.utils.aoa_to_sheet(fmo);
+  wsMo["!cols"] = [18, 14, 14].map(wch => ({ wch }));
+  XLSX.utils.book_append_sheet(wb, wsMo, "MENSUAL");
 
   // VIAJES
   const fv = [["NOMBRE", "DESDE", "INVERSION", "ID"]];

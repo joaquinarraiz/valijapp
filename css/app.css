@@ -457,3 +457,9 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .badge.static { position: static; margin-left: 4px; }
 .link-btn.inline { padding: 0; font-size: inherit; }
 .coupon-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* calendar-month and trip cards on Inicio (tokens already adapt to dark mode) */
+.stat.month-sold { border-top-color: var(--denim); }
+.stat.month-paid { border-top-color: var(--mint); }
+.stat.trip { border-top-color: var(--tag-deep); }
+.stat.month-sold .stat-value { color: var(--denim); }
+.stat.month-paid .stat-value { color: var(--mint-ink); }
