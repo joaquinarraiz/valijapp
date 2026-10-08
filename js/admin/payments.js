@@ -7,6 +7,7 @@ import { pendingPayments } from "../calc.js";
 import { S, map, clientName } from "./store.js";
 import { rerender, renderShell } from "./app.js";
 import { scheduleBackup } from "./sync.js";
+import { exportButton } from "./export.js";
 
 export const mapRequest = r => ({
   id: r.id, clientId: r.client_id, amount: Number(r.amount), note: r.note || "", receiptPath: r.receipt_path,
@@ -76,7 +77,7 @@ export function vPayments() {
   const pending = pendingOf(null);
   const done = S.paymentRequests.filter(r => r.status !== "pending").slice(0, 30);
   return html`
-  <header class="view-head"><h1 class="display-l">Pagos informados</h1></header>
+  <header class="view-head"><h1 class="display-l">Pagos informados</h1><div class="head-actions">${exportButton("pagos")}</div></header>
   ${!S.paymentsReady ? html`<section class="empty"><p>Esta función todavía no está instalada en la base de datos.</p></section>` : ""}
   <p class="hint">Las clientas avisan acá cuando te transfieren. Revisá que la plata haya entrado y tocá <strong>Confirmar</strong>: se anota el pago solo. Si cambió el monto, lo corregís antes de confirmar.</p>
   <section class="card">

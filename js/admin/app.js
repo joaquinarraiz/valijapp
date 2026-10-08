@@ -11,6 +11,7 @@ import { vMore, vPlaces } from "./more.js";
 import { clientFormSheet } from "./clients.js";
 import { syncLabel } from "./sync.js";
 import { vPayments, loadPaymentRequests, pendingInfo } from "./payments.js";
+import "./reports.js"; // registers the "Descargar" builders
 
 const NAV = [
   { id: "inicio", label: "Inicio", icon: "home", phone: true },

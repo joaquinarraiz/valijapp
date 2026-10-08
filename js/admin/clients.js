@@ -13,6 +13,7 @@ import { scheduleBackup } from "./sync.js";
 import { stat } from "../ui.js";
 import { accessBlock, hydrateAccess, passwordField, suggestPassword, createAccess, revokeAccess } from "./access.js";
 import { drawerPayments } from "./payments.js";
+import { exportButton } from "./export.js";
 
 const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["aldia", "Al día"], ["inactivas", "Inactivas"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
 const SORTS = [["deuda", "Mayor deuda"], ["nombre", "Nombre (A-Z)"], ["numero", "N° de clienta"], ["reciente", "Última compra (reciente primero)"], ["compras", "Más compraron"]];
@@ -54,7 +55,7 @@ function chipMatch(chip, c, s) {
   }
 }
 
-function rows() {
+export function rows() {
   const sums = clientSummaries(S.movements);
   const t = norm(S.filters.clientText);
   const digits = t.replace(/\D/g, "");
@@ -84,7 +85,7 @@ export function vClients() {
   return html`
   <header class="view-head">
     <h1 class="display-l">Clientas <span class="count" id="clientCount">${countText(list.length)}</span></h1>
-    <div class="head-actions"><button class="btn primary" data-act="client-new">Nueva clienta</button></div>
+    <div class="head-actions">${exportButton("clientas")}<button class="btn primary" data-act="client-new">Nueva clienta</button></div>
   </header>
   <div class="toolbar">
     <label class="search">${icon("search")}<input type="search" placeholder="Nombre, teléfono, dirección o N°" value="${S.filters.clientText}" data-input="client-search" aria-label="Buscar clienta"></label>

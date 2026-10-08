@@ -10,9 +10,10 @@ import { clientPicker } from "./picker.js";
 import { createClientNamed, openClientDrawer } from "./clients.js";
 import { rerender } from "./app.js";
 import { scheduleBackup } from "./sync.js";
+import { exportButton } from "./export.js";
 
 // ---------- list ----------
-function filtered() {
+export function filtered() {
   let movs = [...S.movements].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
   const t = norm(S.filters.movText);
   if (t) movs = movs.filter(m => norm(clientName(m.clientId)).includes(t) || norm(m.detail).includes(t) || norm(clientById(m.clientId)?.displayName).includes(t));
@@ -58,6 +59,7 @@ export function vMovements() {
   <header class="view-head">
     <h1 class="display-l">Movimientos</h1>
     <div class="head-actions">
+      ${exportButton("movimientos")}
       <button class="btn sale" data-act="sale-new">Anotar venta</button>
       <button class="btn pay" data-act="pay-new">Anotar pago</button>
     </div>

@@ -464,3 +464,9 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .stat.trip { border-top-color: var(--tag-deep); }
 .stat.month-sold .stat-value { color: var(--denim); }
 .stat.month-paid .stat-value { color: var(--mint-ink); }
+/* "Descargar" menu */
+.dl { position: relative; display: inline-block; }
+.dl-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 180px; display: grid; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.dl-menu button { appearance: none; border: 0; background: none; color: var(--ink); text-align: left; padding: 10px 12px; border-radius: 8px; font: 600 .92rem var(--body); cursor: pointer; }
+.dl-menu button:hover, .dl-menu button:focus-visible { background: var(--surface-2); }
+.view-head .head-actions { align-items: center; }

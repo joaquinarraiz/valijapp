@@ -12,11 +12,12 @@ import { luggageTag, stat } from "../ui.js";
 import { S, map, calcData, partnerName, upsertLocal, removeLocal, deleteOne } from "./store.js";
 import { rerender } from "./app.js";
 import { scheduleBackup } from "./sync.js";
+import { exportButton } from "./export.js";
 
-const KIND_LABEL = { RETIRO: "Retiro", PRESTAMO: "Préstamo", DEVOLUCION: "Devolución", INGRESO: "Entró plata", GASTO: "Salió plata", AJUSTE: "Ajuste" };
+export const KIND_LABEL = { RETIRO: "Retiro", PRESTAMO: "Préstamo", DEVOLUCION: "Devolución", INGRESO: "Entró plata", GASTO: "Salió plata", AJUSTE: "Ajuste" };
 const KIND_TONE = { RETIRO: "owes", PRESTAMO: "credit", DEVOLUCION: "neutral", INGRESO: "paid", GASTO: "owes", AJUSTE: "neutral" };
 
-function who(c) {
+export function who(c) {
   return c.kind === "RETIRO" ? partnerName(c.person) : c.person || "—";
 }
 
@@ -34,7 +35,7 @@ export function cashRow(c, withBalance = true) {
 export function vCash() {
   const tabs = [["caja", "Caja"], ["socios", "Socios y períodos"], ["viajes", "Viajes e inversiones"]];
   return html`
-  <header class="view-head"><h1 class="display-l">Caja & Socios</h1></header>
+  <header class="view-head"><h1 class="display-l">Caja & Socios</h1><div class="head-actions">${exportButton("caja")}</div></header>
   <div class="seg wide" role="tablist">
     ${tabs.map(([id, label]) => html`<button role="tab" class="${S.cashTab === id ? "on" : ""}" aria-selected="${S.cashTab === id}" data-act="cash-tab" data-tab="${id}">${label}</button>`)}
   </div>
