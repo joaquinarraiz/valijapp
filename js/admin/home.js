@@ -8,6 +8,7 @@ import { go } from "./app.js";
 import { cashRow, cashSheet } from "./cash.js";
 import { migrationCard } from "./more.js";
 import { paymentsHomeCard } from "./payments.js";
+import { partnerCardSub } from "../partner-text.js";
 
 export function vHome() {
   const d = dashboard(calcData());
@@ -18,9 +19,9 @@ export function vHome() {
   const notActivated = S.clients.filter(c => !c.userId).length;
   // money of the current trip still reserved for open loans (the full breakdown lives in Caja & Socios)
   const openReserve = st ? Math.min(d.loanPool, st.deducted) : 0;
-  const partnerCard = (name, share, withdrawn, tone) => stat({
+  const partnerCard = (name, share, adjust, withdrawn, tone) => stat({
     label: `${name} · período`, value: fmtMoney(share - withdrawn), tone,
-    sub: `ganó ${fmtMoney(share)}${withdrawn ? " · ya retiró " + fmtMoney(withdrawn) : ""}${openReserve > 0 ? " · se reservan " + fmtMoney(openReserve) + " para préstamos abiertos" : ""}`
+    sub: partnerCardSub({ share, adjust, withdrawn, openReserve })
   });
 
   return html`
@@ -43,8 +44,8 @@ export function vHome() {
     ${stat({ label: "Cobrado histórico", value: fmtMoney(d.collectedHistoric), tone: "paid" })}
     ${stat({ label: `Vendido ${monthLabel(month.month)}`, value: fmtMoney(month.sold), sub: "mes calendario", tone: "month-sold" })}
     ${stat({ label: `Cobrado ${monthLabel(month.month)}`, value: fmtMoney(month.collected), sub: `${month.movements} movimientos este mes`, tone: "month-paid" })}
-    ${st ? partnerCard(p1, st.share1, d.withdrawn1, "p1") : ""}
-    ${st ? partnerCard(p2, st.share2, d.withdrawn2, "p2") : ""}
+    ${st ? partnerCard(p1, st.share1, st.adjust1, d.withdrawn1, "p1") : ""}
+    ${st ? partnerCard(p2, st.share2, st.adjust2, d.withdrawn2, "p2") : ""}
     ${d.totalLoans > 0 ? stat({ label: "Préstamos a devolver", value: fmtMoney(d.totalLoans), sub: d.loans.map(([q, v]) => q + ": " + fmtMoney(v)).join(" · ") + ` · reservado ${fmtMoney(d.loanPool)} de ${fmtMoney(d.loanOutstanding)}`, tone: "owes" }) : ""}
   </div>
 

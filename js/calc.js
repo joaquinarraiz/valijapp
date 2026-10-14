@@ -5,12 +5,14 @@
  * Data shape used across the app (camelCase, already loaded from Supabase):
  *   movement: { id, clientId, date: "YYYY-MM-DD", detail, total, paid, couponId?, discountAmount? }
  *   trip:     { id, name, startsOn: "YYYY-MM-DD", investment }
- *   cash:     { id, kind: "RETIRO"|"PRESTAMO"|"DEVOLUCION"|"INGRESO"|"GASTO"|"AJUSTE", person, date, amount, note }
+ *   cash:     { id, kind: "RETIRO"|"PRESTAMO"|"DEVOLUCION"|"INGRESO"|"GASTO"|"AJUSTE"|"AJUSTE_SOCIO", person, date, amount, note }
  *   settings: { partner1Name, partner1Pct, partner2Name, partner2Pct, inactiveDays, cashSince, cashInitial }
  * Partner keys stay as in the legacy data: "J" (partner 1) and "M" (partner 2).
  */
 
-export const CASH_KINDS = ["RETIRO", "PRESTAMO", "DEVOLUCION", "INGRESO", "GASTO", "AJUSTE"];
+export const CASH_KINDS = ["RETIRO", "PRESTAMO", "DEVOLUCION", "INGRESO", "GASTO", "AJUSTE", "AJUSTE_SOCIO"];
+// AJUSTE_SOCIO: manual change of what a partner earns (person "J"/"M", signed amount). Never moves the cash box.
+export const PARTNER_ADJUST = "AJUSTE_SOCIO";
 export const PARTNER_1 = "J";
 export const PARTNER_2 = "M";
 
@@ -139,7 +141,14 @@ export function tripStats(data, trip, reservesState = loanReserves(data)) {
   const returnDeducted = reservesState.extras
     .filter(x => (!from || x.date >= from) && (!to || x.date < to)).reduce((a, x) => a + x.amount, 0);
   const deducted = reserved + returnDeducted;
-  return { movs: movs.length, sold, collected, returned, reserved, returnDeducted, deducted, from, to, ...splitCollected(collected, deducted, data.settings) };
+  const split = splitCollected(collected, deducted, data.settings);
+  // manual partner adjustments dated in the period (same range rule as withdrawals); what is not given stays in "sobró"
+  const adjust1 = partnerAdjustIn(data.cash, PARTNER_1, from, to);
+  const adjust2 = partnerAdjustIn(data.cash, PARTNER_2, from, to);
+  return {
+    movs: movs.length, sold, collected, returned, reserved, returnDeducted, deducted, from, to, ...split,
+    adjust1, adjust2, share1: split.share1 + adjust1, share2: split.share2 + adjust2, box: split.box - adjust1 - adjust2
+  };
 }
 
 /** The split itself, isolated so it can be tested on its own. `deducted` = money set aside for loans. */
@@ -154,6 +163,16 @@ export function withdrawnIn(cash, person, from, to) {
   return cashInRange(cash, from, to).filter(c => c.kind === "RETIRO" && c.person === person).reduce((a, c) => a + num(c.amount), 0);
 }
 
+/** Sum of signed AJUSTE_SOCIO amounts of a partner dated in [from, to). */
+export function partnerAdjustIn(cash, person, from, to) {
+  return cashInRange(cash, from, to).filter(c => c.kind === PARTNER_ADJUST && c.person === person).reduce((a, c) => a + num(c.amount), 0);
+}
+
+/** "Que le quede por cobrar $X": the adjustment needed, rounded to cents. */
+export function adjustmentForTarget(target, currentOwed) {
+  return Math.round((num(target) - num(currentOwed)) * 100) / 100;
+}
+
 export function withdrawnTotal(cash, person) {
   return cash.filter(c => c.kind === "RETIRO" && c.person === person).reduce((a, c) => a + num(c.amount), 0);
 }
@@ -162,6 +181,7 @@ export function withdrawnTotal(cash, person) {
 export function cashSign(kind) {
   if (kind === "PRESTAMO" || kind === "INGRESO") return 1;
   if (kind === "AJUSTE") return 1; // amount already carries its sign
+  if (kind === PARTNER_ADJUST) return 0; // changes a partner share, not the money in the box
   return -1; // RETIRO, DEVOLUCION, GASTO
 }
 

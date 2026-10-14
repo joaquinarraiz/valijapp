@@ -64,7 +64,8 @@ registerExport("caja", () => {
   const d = cashDetail(data);
   const cashRows = sortCash(S.cash).filter(c => !d.since || c.date >= d.since).reverse().map(c => [
     fmtDate(c.date), KIND_LABEL[c.kind] || c.kind, who(c),
-    (c.kind === "AJUSTE" ? 1 : ["PRESTAMO", "INGRESO"].includes(c.kind) ? 1 : -1) * c.amount, c.note || "",
+    (c.kind === "AJUSTE" || c.kind === "AJUSTE_SOCIO" ? 1 : ["PRESTAMO", "INGRESO"].includes(c.kind) ? 1 : -1) * c.amount,
+    c.kind === "AJUSTE_SOCIO" ? [c.note, "no mueve la caja"].filter(Boolean).join(" · ") : c.note || "",
     cashBalanceAfter(data, c.date, c.id)
   ]);
   const { rows, total } = periodSummary(data);

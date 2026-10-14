@@ -2,10 +2,11 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, adjustmentForTarget, partnerAdjustIn, withdrawnIn, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
+import { partnerCardSub } from "../js/partner-text.js";
 
 let passed = 0;
 function test(name, fn) {
@@ -300,6 +301,42 @@ test("calendar months: stats and full history with empty months", () => {
   assert.deepEqual(monthlyHistory({ movements: [] }, "2026-10-07").map(x => x.month), ["2026-10"]);
   assert.equal(monthlyHistory({ movements: [{ date: "2025-12-22", total: 1, paid: 0 }] }, "2026-01-02").length, 2); // across a year
   assert.equal(monthLabel("2026-10"), "OCTUBRE 2026");
+});
+
+test("partner adjustment changes share and por cobrar, never the cash box", () => {
+  const trips1 = [{ id: "o", name: "OCTUBRE 2026", startsOn: "2026-10-01", investment: 0 }];
+  const base = {
+    trips: trips1, settings: { partner1Pct: 25, partner2Pct: 25, cashSince: "2026-10-01", cashInitial: 0 },
+    movements: [{ id: "a", clientId: 1, date: "2026-10-02", total: 0, paid: 1705500 }],
+    cash: []
+  };
+  const before = tripStats(base, trips1[0]);
+  assert.deepEqual([before.share1, before.share2], [426375, 426375]);
+  const boxBefore = cashDetail(base).balance;
+  // "que le quede por cobrar $406.500" for both
+  const delta = adjustmentForTarget(406500, before.share1 - withdrawnIn(base.cash, "J", before.from, before.to));
+  assert.equal(delta, -19875);
+  const adjusted = { ...base, cash: [
+    { id: "x1", kind: "AJUSTE_SOCIO", person: "J", date: "2026-10-05", amount: delta, seq: 2 },
+    { id: "x2", kind: "AJUSTE_SOCIO", person: "M", date: "2026-10-05", amount: delta, seq: 3 }
+  ] };
+  const after = tripStats(adjusted, trips1[0]);
+  assert.deepEqual([after.share1, after.share2, after.adjust1, after.adjust2], [406500, 406500, -19875, -19875]);
+  assert.equal(after.box, before.box + 39750);              // what partners do not take stays in "sobró"
+  assert.equal(after.base, before.base);                    // the split base is untouched
+  assert.equal(cashDetail(adjusted).balance, boxBefore);    // cash box unchanged
+  assert.equal(cashBalanceAfter(adjusted, "2026-10-05", "x2"), boxBefore);
+  assert.equal(partnerAdjustIn(adjusted.cash, "J", "2026-11-01", null), 0); // other period: nothing
+  assert.equal(withdrawnIn(adjusted.cash, "J", "2026-10-01", null), 0);     // not a withdrawal
+  assert.equal(adjustmentForTarget("406500.5", 426375), -19874.5);
+});
+
+test("partner card text shows the adjustment", () => {
+  assert.equal(partnerCardSub({ share: 406500, adjust: -19875, withdrawn: 100000 }),
+    "ganó $406.500 (ajuste −$19.875) · ya retiró $100.000");
+  assert.equal(partnerCardSub({ share: 426375 }), "ganó $426.375");
+  assert.equal(partnerCardSub({ share: 10000, adjust: 5000, openReserve: 800000 }),
+    "ganó $10.000 (ajuste +$5.000) · se reservan $800.000 para préstamos abiertos");
 });
 
 console.log(`\n${passed} tests passed`);

@@ -13,15 +13,18 @@ import { S, map, calcData, partnerName, upsertLocal, removeLocal, deleteOne } fr
 import { rerender } from "./app.js";
 import { scheduleBackup } from "./sync.js";
 import { exportButton } from "./export.js";
+import { adjustSheet } from "./partner-adjust.js";
+import { signedMoney } from "../partner-text.js";
 
-export const KIND_LABEL = { RETIRO: "Retiro", PRESTAMO: "Préstamo", DEVOLUCION: "Devolución", INGRESO: "Entró plata", GASTO: "Salió plata", AJUSTE: "Ajuste" };
-const KIND_TONE = { RETIRO: "owes", PRESTAMO: "credit", DEVOLUCION: "neutral", INGRESO: "paid", GASTO: "owes", AJUSTE: "neutral" };
+export const KIND_LABEL = { RETIRO: "Retiro", PRESTAMO: "Préstamo", DEVOLUCION: "Devolución", INGRESO: "Entró plata", GASTO: "Salió plata", AJUSTE: "Ajuste", AJUSTE_SOCIO: "Ajuste socio" };
+const KIND_TONE = { RETIRO: "owes", PRESTAMO: "credit", DEVOLUCION: "neutral", INGRESO: "paid", GASTO: "owes", AJUSTE: "neutral", AJUSTE_SOCIO: "credit" };
 
 export function who(c) {
-  return c.kind === "RETIRO" ? partnerName(c.person) : c.person || "—";
+  return c.kind === "RETIRO" || c.kind === "AJUSTE_SOCIO" ? partnerName(c.person) : c.person || "—";
 }
 
 export function cashRow(c, withBalance = true) {
+  if (c.kind === "AJUSTE_SOCIO") return adjustRow(c);
   const signed = cashSign(c.kind) * c.amount;
   return html`<li><button class="row" data-act="cash-edit" data-id="${c.id}">
     <span class="row-date">${fmtDate(c.date)}</span>
@@ -29,6 +32,16 @@ export function cashRow(c, withBalance = true) {
       ${c.note ? html`<span class="row-sub">${c.note}</span>` : ""}</span>
     <span class="row-amounts"><span class="amt ${signed >= 0 ? "paid" : "owes"}">${signed >= 0 ? "+" : "−"}${fmtMoney(Math.abs(c.amount))}</span>
       ${withBalance ? html`<span class="small muted">quedó ${fmtMoney(cashBalanceAfter(calcData(), c.date, c.id))}</span>` : ""}</span>
+  </button></li>`;
+}
+
+/** A partner adjustment: shows the signed change of her/his share; it does not move the box. */
+function adjustRow(c) {
+  return html`<li><button class="row" data-act="cash-edit" data-id="${c.id}">
+    <span class="row-date">${fmtDate(c.date)}</span>
+    <span class="row-main"><span class="row-title"><span class="chip credit">Ajuste socio</span> ${who(c)}</span>
+      <span class="row-sub">${c.note ? c.note + " · " : ""}no mueve la caja</span></span>
+    <span class="row-amounts"><span class="amt ${c.amount >= 0 ? "paid" : "owes"}">${signedMoney(c.amount)}</span></span>
   </button></li>`;
 }
 
@@ -60,6 +73,7 @@ function vBox() {
     <button class="btn ghost" data-act="cash-new" data-kind="RETIRO">Retiro</button>
     <button class="btn ghost" data-act="cash-new" data-kind="PRESTAMO">Préstamo</button>
     <button class="btn ghost" data-act="cash-new" data-kind="DEVOLUCION">Devolución</button>
+    <button class="btn ghost" data-act="adjust-new">Ajustar lo que cobra</button>
   </div>
   <div class="two-col">
     <section class="card">
@@ -141,7 +155,10 @@ function cashKindChanged() {
     : `Esto va a ${k === "INGRESO" || k === "PRESTAMO" ? "sumar" : "restar"} plata de la caja.`;
 }
 onInput("cash-kind", cashKindChanged);
-onAction("cash-edit", d => cashSheet(d.id));
+onAction("cash-edit", d => {
+  const c = S.cash.find(x => x.id === d.id);
+  return c && c.kind === "AJUSTE_SOCIO" ? adjustSheet(d.id) : cashSheet(d.id);
+});
 
 onForm("cash-save", async f => {
   const kind = f.kind;
@@ -215,6 +232,7 @@ function vPartners() {
   const monthTotal = months.reduce((a, m) => ({ sold: a.sold + m.sold, collected: a.collected + m.collected }), { sold: 0, collected: 0 });
   return html`
   <p class="hint">Lo cobrado en cada período se reparte: ${s.partner1Name} ${s.partner1Pct}%, ${s.partner2Name} ${s.partner2Pct}% y el resto queda en la caja para reinvertir. Mientras haya un préstamo sin devolver, lo que se cobra se reserva primero para devolverlo y recién después se reparte. La caja muestra igual la plata real.</p>
+  <div class="btn-row"><button class="btn ghost" data-act="adjust-new">Ajustar lo que cobra</button></div>
   <div class="stats">
     ${stat({ label: "Total cobrado", value: fmtMoney(total.collected), tone: "paid" })}
     ${stat({ label: `Total ${s.partner1Name} (${s.partner1Pct}%)`, value: fmtMoney(total.share1), tone: "p1", sub: w1 ? `ya retiró ${fmtMoney(w1)} · le queda ${fmtMoney(total.share1 - w1)}` : "" })}

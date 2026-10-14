@@ -649,3 +649,14 @@ begin
       on public.movements (client_id, coupon_id) where coupon_id is not null;
   end if;
 end $$;
+
+-- =====================================================================
+-- Manual partner adjustments, kind AJUSTE_SOCIO (also in migrations/2026-10-13_partner_adjust.sql)
+-- =====================================================================
+alter table public.cash_movements drop constraint if exists cash_movements_kind_check;
+alter table public.cash_movements add constraint cash_movements_kind_check
+  check (kind in ('RETIRO', 'PRESTAMO', 'DEVOLUCION', 'INGRESO', 'GASTO', 'AJUSTE', 'AJUSTE_SOCIO'));
+
+alter table public.cash_movements drop constraint if exists cash_movements_partner_adjust_check;
+alter table public.cash_movements add constraint cash_movements_partner_adjust_check
+  check (kind <> 'AJUSTE_SOCIO' or (amount <> 0 and person in ('J', 'M')));

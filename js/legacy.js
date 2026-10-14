@@ -38,7 +38,7 @@ function keyMaker(prefix) {
 }
 
 const INT4_MAX = 2147483647;
-export const CASH_KINDS = ["RETIRO", "PRESTAMO", "DEVOLUCION", "INGRESO", "GASTO", "AJUSTE"];
+export const CASH_KINDS = ["RETIRO", "PRESTAMO", "DEVOLUCION", "INGRESO", "GASTO", "AJUSTE", "AJUSTE_SOCIO"];
 
 /**
  * Parses a money value. Accepts numbers and strings like "$1.500", "1.500,50" (es-AR), "1500.5", "-5000".
@@ -290,9 +290,9 @@ export function workbookToLegacy(XLSX, wb, { partner2Name = "ALE", fallbackTrips
       if (!tipo) continue;
       const t = norm(tipo);
       if (t === "SALDO INICIAL") { out.ajustes.saldoInicial = cellNum(monto); out.ajustes.cajaDesde = cellDate(fecha); continue; }
-      if (!["RETIRO", "PRESTAMO", "DEVOLUCION", "INGRESO", "GASTO", "AJUSTE"].includes(t) || !monto) continue;
+      if (!CASH_KINDS.includes(t) || !monto) continue;
       let persona = norm(quien || "");
-      if (t === "RETIRO") persona = persona === norm(partner2Name) ? "M" : "J";
+      if (t === "RETIRO" || t === "AJUSTE_SOCIO") persona = persona === norm(partner2Name) || persona === "M" ? "M" : "J";
       out.caja.push({ id: idc >= 0 && fcj[i][idc] ? String(fcj[i][idc]) : undefined, fecha: cellDate(fecha), tipo: t, persona, monto: cellNum(monto), nota: nota ? String(nota).trim().toUpperCase() : "" });
     }
   }

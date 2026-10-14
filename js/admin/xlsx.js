@@ -84,7 +84,7 @@ export async function exportXlsx() {
   const d = cashDetail(data);
   const fcj = [["FECHA", "TIPO", "QUIEN", "MONTO", "NOTA", "ID"]];
   fcj.push([d.since, "SALDO INICIAL", "", d.initial, "LA CAJA EMPIEZA A CONTAR ACA", ""]);
-  sortCash(S.cash).forEach(c => fcj.push([c.date, c.kind, c.kind === "RETIRO" ? partnerName(c.person) : c.person, c.amount, c.note, c.legacyId || c.id]));
+  sortCash(S.cash).forEach(c => fcj.push([c.date, c.kind, c.kind === "RETIRO" || c.kind === "AJUSTE_SOCIO" ? partnerName(c.person) : c.person, c.amount, c.note, c.legacyId || c.id]));
   fcj.push([]);
   fcj.push(["", "COBRADO", "", d.collected, "PAGOS DE CLIENTAS DESDE EL CORTE"]);
   fcj.push(["", "INVERTIDO", "", -d.invested, "INVERSION DE LOS VIAJES"]);
