@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, adjustmentForTarget, partnerAdjustIn, withdrawnIn, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, clientStatement, statementRange, adjustmentForTarget, partnerAdjustIn, withdrawnIn, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
@@ -337,6 +337,40 @@ test("partner card text shows the adjustment", () => {
   assert.equal(partnerCardSub({ share: 426375 }), "ganó $426.375");
   assert.equal(partnerCardSub({ share: 10000, adjust: 5000, openReserve: 800000 }),
     "ganó $10.000 (ajuste +$5.000) · se reservan $800.000 para préstamos abiertos");
+});
+
+test("client statement: opening, running balance, closing", () => {
+  const mv = [
+    { clientId: 5, date: "2026-08-10", total: 50000, paid: 10000, detail: "JEAN" },
+    { clientId: 5, date: "2026-09-02", total: 30000, paid: 0, detail: "REMERA", discountAmount: 3000, couponId: "k" },
+    { clientId: 9, date: "2026-09-03", total: 99999, paid: 0 },
+    { clientId: 5, date: "2026-09-02", total: 0, paid: 20000, detail: "A SU FAVOR", createdAt: "2026-09-02T15:00:00Z" },
+    { clientId: 5, date: "2026-09-30", total: 0, paid: 60000, detail: "TRANSFERENCIA" },
+    { clientId: 5, date: "2026-10-05", total: 10000, paid: 0 }
+  ];
+  const st = clientStatement({ movements: mv, coupons: [{ id: "k", code: "MAMA10" }] }, 5, "2026-09-01", "2026-09-30");
+  assert.equal(st.opening, 40000);
+  assert.deepEqual(st.rows.map(r => r.balance), [70000, 50000, -10000]);
+  assert.deepEqual([st.totalBought, st.totalPaid, st.totalDiscount, st.closing], [30000, 80000, 3000, -10000]);
+  assert.equal(st.rows[0].couponCode, "MAMA10");
+  // closing equals the balance as of "to"
+  assert.equal(st.closing, clientBalance(mv.filter(m => m.date <= "2026-09-30"), 5));
+  // "Todo": closing equals the current client balance
+  const all = statementRange("all", "2026-10-19", "2026-08-10");
+  const full = clientStatement({ movements: mv }, 5, all.from, all.to);
+  assert.equal(full.opening, 0);
+  assert.equal(full.closing, clientBalance(mv, 5));
+  // empty period
+  const empty = clientStatement({ movements: mv }, 5, "2026-07-01", "2026-07-31");
+  assert.deepEqual([empty.rows.length, empty.opening, empty.closing], [0, 0, 0]);
+});
+
+test("statement presets use calendar months", () => {
+  assert.deepEqual(statementRange("month", "2026-10-19"), { from: "2026-10-01", to: "2026-10-19" });
+  assert.deepEqual(statementRange("prev", "2026-10-19"), { from: "2026-09-01", to: "2026-09-30" });
+  assert.deepEqual(statementRange("prev", "2026-03-05"), { from: "2026-02-01", to: "2026-02-28" });
+  assert.deepEqual(statementRange("3m", "2026-01-15"), { from: "2025-11-01", to: "2026-01-15" });
+  assert.deepEqual(statementRange("all", "2026-10-19", null), { from: "2026-10-19", to: "2026-10-19" });
 });
 
 console.log(`\n${passed} tests passed`);

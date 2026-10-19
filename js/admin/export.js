@@ -61,7 +61,8 @@ export function nowAR() {
   }).format(new Date()).replace(",", "");
 }
 const cellText = (col, v) => v === null || v === undefined || v === "" ? "" : col.money ? fmtMoney(v) : String(v);
-const fileBase = r => `ValijApp - ${r.filename} - ${todayISO()}`.replace(/[\\/:*?"<>|]/g, "-");
+// report.fileBase (full name, no extension) overrides the default "ValijApp - <filename> - <date>"
+const fileBase = r => (r.fileBase || `ValijApp - ${r.filename} - ${todayISO()}`).replace(/[\\/:*?"<>|]/g, "-");
 
 export function downloadBlob(blob, name) {
   const a = document.createElement("a");

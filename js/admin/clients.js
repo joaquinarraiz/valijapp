@@ -14,6 +14,7 @@ import { stat } from "../ui.js";
 import { accessBlock, hydrateAccess, passwordField, suggestPassword, createAccess, revokeAccess } from "./access.js";
 import { drawerPayments } from "./payments.js";
 import { exportButton } from "./export.js";
+import "./statement.js"; // "Descargar resumen" in the drawer
 
 const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["aldia", "Al día"], ["inactivas", "Inactivas"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
 const SORTS = [["deuda", "Mayor deuda"], ["nombre", "Nombre (A-Z)"], ["numero", "N° de clienta"], ["reciente", "Última compra (reciente primero)"], ["compras", "Más compraron"]];
@@ -151,6 +152,7 @@ export function openClientDrawer(id) {
       <button class="btn pay" data-act="drawer-pay" data-id="${c.id}">Anotar pago</button>
       ${hasPhone ? html`<a class="btn whatsapp" href="${waLink(c.phone)}" target="_blank" rel="noopener">${icon("chat")} WhatsApp</a>` : ""}
       ${hasPhone && s.debt > 0 ? html`<a class="btn ghost" href="${waLink(c.phone, reminderMessage(c, s.debt))}" target="_blank" rel="noopener">Recordarle el saldo</a>` : ""}
+      <button class="btn ghost" data-act="drawer-statement" data-id="${c.id}">${icon("download")} Descargar resumen</button>
       <button class="btn ghost" data-act="client-edit" data-id="${c.id}">${icon("edit")} Editar datos</button>
     </div>
     <section class="card contact">

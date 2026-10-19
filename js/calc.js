@@ -35,6 +35,43 @@ export function clientBalance(movements, clientId) {
 }
 
 /**
+ * Account statement of one client between two ISO dates (both inclusive).
+ * opening = clientBalance of everything dated before `from`; rows carry the running balance.
+ * Movements: { clientId, date, detail, total, paid, discountAmount?, couponId?, createdAt? }; data.coupons optional (for codes).
+ */
+export function clientStatement(data, clientId, from, to) {
+  const mine = data.movements.filter(m => m.clientId === clientId && m.date);
+  const opening = clientBalance(mine.filter(m => m.date < from), clientId);
+  const inRange = mine
+    .map((m, i) => ({ m, i }))
+    .filter(({ m }) => m.date >= from && m.date <= to)
+    .sort((a, b) => a.m.date.localeCompare(b.m.date) || String(a.m.createdAt || "").localeCompare(String(b.m.createdAt || "")) || a.i - b.i);
+  let balance = opening, totalBought = 0, totalPaid = 0, totalDiscount = 0;
+  const rows = inRange.map(({ m }) => {
+    const total = num(m.total), paid = num(m.paid), discount = num(m.discountAmount);
+    balance += total - paid; totalBought += total; totalPaid += paid; totalDiscount += discount;
+    const coupon = m.couponId && data.coupons ? data.coupons.find(c => c.id === m.couponId) : null;
+    return { date: m.date, detail: m.detail || "", total, paid, discount, couponCode: coupon ? coupon.code : null, balance };
+  });
+  return { opening, rows, totalBought, totalPaid, totalDiscount, closing: opening + totalBought - totalPaid };
+}
+
+/** Date range of a statement preset ("month" | "prev" | "3m" | "all"). firstDate = earliest movement of the client. */
+export function statementRange(preset, today = todayISO(), firstDate = null) {
+  const [y, m] = today.split("-").map(Number);
+  const iso = (yy, mm, dd) => yy + "-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+  const back = n => { let yy = y, mm = m - n; while (mm < 1) { mm += 12; yy--; } return [yy, mm]; };
+  if (preset === "prev") {
+    const [py, pm] = back(1);
+    const last = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+    return { from: iso(py, pm, 1), to: iso(py, pm, last) };
+  }
+  if (preset === "3m") { const [py, pm] = back(2); return { from: iso(py, pm, 1), to: today }; }
+  if (preset === "all") return { from: firstDate && firstDate < today ? firstDate : today, to: today };
+  return { from: iso(y, m, 1), to: today };
+}
+
+/**
  * Per-client aggregates (legacy todasLasDeudoras): debt, bought, last purchase date.
  * Returns a Map clientId -> { clientId, debt, bought, last, count }.
  */

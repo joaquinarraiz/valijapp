@@ -470,3 +470,7 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .dl-menu button { appearance: none; border: 0; background: none; color: var(--ink); text-align: left; padding: 10px 12px; border-radius: 8px; font: 600 .92rem var(--body); cursor: pointer; }
 .dl-menu button:hover, .dl-menu button:focus-visible { background: var(--surface-2); }
 .view-head .head-actions { align-items: center; }
+.radio-chip { display: inline-flex; align-items: center; gap: 0; cursor: pointer; }
+.radio-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-chip:has(input:checked) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.radio-chip:has(input:focus-visible) { outline: 3px solid var(--denim); outline-offset: 2px; }
