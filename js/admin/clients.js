@@ -14,6 +14,7 @@ import { stat } from "../ui.js";
 import { accessBlock, hydrateAccess, passwordField, suggestPassword, createAccess, revokeAccess } from "./access.js";
 import { drawerPayments } from "./payments.js";
 import { exportButton } from "./export.js";
+import { notebook, azStrip, initialOf } from "./notebook.js";
 import "./statement.js"; // "Descargar resumen" in the drawer
 
 const CHIPS = [["todas", "Todas"], ["deben", "Deben"], ["aldia", "Al día"], ["inactivas", "Inactivas"], ["sinacceso", "Sin acceso"], ["conacceso", "Con acceso"]];
@@ -68,25 +69,44 @@ export function rows() {
     .sort(SORTERS[S.filters.clientSort] || SORTERS.deuda);
 }
 
-const countText = n => n === S.clients.length ? String(n) : `${n} / ${S.clients.length}`;
+const countText = n => n === S.clients.length ? `${n} clientas` : `${n} de ${S.clients.length} clientas`;
+
+function balanceCell(debt) {
+  return debt > 0 ? html`<span class="amt owes">${fmtMoney(debt)}</span>`
+    : debt < 0 ? html`<span class="amt credit">a favor ${fmtMoney(-debt)}</span>`
+      : html`<span class="amt muted">al día</span>`;
+}
 
 function clientRow({ c, s }) {
-  return html`<li><button class="row client-row" data-act="client-open" data-id="${c.id}">
-    ${avatar(avatarUrl(S.sb, c.avatarPath), c.name)}
-    <span class="row-main">
-      <span class="row-title">${c.name}${c.userId ? html` <span class="dot-ok" title="Tiene acceso a la app"></span>` : ""}</span>
-      <span class="row-sub">N° ${c.id}${c.displayName ? html` · “${c.displayName}”` : ""}${s.last ? html` · compró ${fmtDate(s.last)}` : ""}</span>
-    </span>
-    <span class="row-amounts">${s.debt > 0 ? html`<span class="amt owes">${fmtMoney(s.debt)}</span>` : s.debt < 0 ? html`<span class="amt credit">a favor ${fmtMoney(-s.debt)}</span>` : html`<span class="amt muted">al día</span>`}</span>
-  </button></li>`;
+  const hasWa = !!waDigits(c.phone);
+  return html`<li class="nb-row" role="row" data-initial="${initialOf(c.name)}">
+    <div class="nb-cell nb-main" role="cell">
+      <button class="nb-open" data-act="client-open" data-id="${c.id}">${c.name}${c.userId ? html` <span class="dot-ok" title="Tiene acceso a la app"></span>` : ""}</button>
+      <span class="nb-sub">N° ${c.id}${c.displayName ? html` · “${c.displayName}”` : ""}${s.last ? html`<span class="nb-phone-only"> · compró ${fmtDate(s.last)}</span>` : ""}</span>
+    </div>
+    <div class="nb-cell nb-tel" role="cell">${c.phone ? (hasWa
+      ? html`<a class="nb-link" href="${waLink(c.phone)}" target="_blank" rel="noopener">${c.phone}</a>` : c.phone) : html`<span class="muted">—</span>`}</div>
+    <div class="nb-cell nb-last" role="cell">${s.last ? html`${fmtDate(s.last)}<span class="nb-sub">hace ${daysSince(s.last)} días</span>` : html`<span class="muted">nunca</span>`}</div>
+    <div class="nb-cell nb-access" role="cell">${c.userId ? html`<span class="chip paid">Con acceso</span>` : html`<span class="chip">Sin acceso</span>`}</div>
+    <div class="nb-cell nb-amount" role="cell">${balanceCell(s.debt)}</div>
+    <div class="nb-cell nb-actions" role="cell">
+      <button class="btn ghost sm" data-act="client-open" data-id="${c.id}" aria-label="Abrir la ficha de ${c.name}">Ficha</button>
+      ${hasWa ? html`<a class="icon-btn nb-wa" href="${waLink(c.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp a ${c.name}">${icon("chat")}</a>` : ""}
+    </div>
+  </li>`;
 }
+
+const CLIENT_COLS = [
+  { label: "Clienta", cls: "nb-main" }, { label: "WhatsApp / Teléfono", cls: "nb-tel" }, { label: "Última compra", cls: "nb-last" },
+  { label: "Acceso", cls: "nb-access" }, { label: "Saldo", cls: "nb-amount" }, { label: "", cls: "nb-actions" }
+];
 
 export function vClients() {
   const list = rows();
   return html`
   <header class="view-head">
-    <h1 class="display-l">Clientas <span class="count" id="clientCount">${countText(list.length)}</span></h1>
-    <div class="head-actions">${exportButton("clientas")}<button class="btn primary" data-act="client-new">Nueva clienta</button></div>
+    <h1 class="display-l">Clientas</h1>
+    <div class="head-actions"><button class="btn primary" data-act="client-new">Nueva clienta</button></div>
   </header>
   <div class="toolbar">
     <label class="search">${icon("search")}<input type="search" placeholder="Nombre, teléfono, dirección o N°" value="${S.filters.clientText}" data-input="client-search" aria-label="Buscar clienta"></label>
@@ -97,16 +117,33 @@ export function vClients() {
   <div class="chips" role="group" aria-label="Filtro">
     ${CHIPS.map(([id, label]) => html`<button class="filter-chip ${S.filters.clientChip === id ? "on" : ""}" data-act="client-chip" data-chip="${id}" aria-pressed="${S.filters.clientChip === id}">${label}</button>`)}
   </div>
-  <ul class="rows card flush" id="clientList">${list.map(clientRow)}</ul>
+  ${notebook({
+    title: "Cartera de clientas", kind: "clients", listId: "clientList", cols: CLIENT_COLS,
+    meta: html`<span class="nb-count" id="clientCount">${countText(list.length)}</span>${exportButton("clientas")}`,
+    rows: list.map(clientRow),
+    side: html`<div id="azWrap">${azStrip(list.map(x => x.c.name))}</div>`
+  })}
   <section class="empty" id="clientEmpty" ${list.length ? "hidden" : ""}><p>No encontré clientas con ese filtro.</p></section>`;
 }
 
 function repaintList() {
   const list = rows();
   mount($("#clientList"), list.map(clientRow));
+  mount($("#azWrap"), azStrip(list.map(x => x.c.name)));
   $("#clientCount").textContent = countText(list.length);
   $("#clientEmpty").hidden = list.length > 0;
 }
+
+// A–Z index: first clienta (in the current order) whose admin name starts with that letter
+onAction("az-jump", d => {
+  const list = $("#clientList");
+  if (!list) return;
+  const target = d.letter ? list.querySelector(`.nb-row[data-initial="${d.letter}"]`) : list.firstElementChild;
+  if (!target) return;
+  target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  const btn = target.querySelector(".nb-open");
+  if (btn) btn.focus({ preventScroll: true });
+});
 
 let t;
 onInput("client-search", v => {

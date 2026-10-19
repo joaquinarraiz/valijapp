@@ -11,6 +11,7 @@ import { createClientNamed, openClientDrawer } from "./clients.js";
 import { rerender } from "./app.js";
 import { scheduleBackup } from "./sync.js";
 import { exportButton } from "./export.js";
+import { notebook } from "./notebook.js";
 
 // ---------- list ----------
 export function filtered() {
@@ -52,6 +53,24 @@ export function movementRow(m, withName = true, from = "") {
   </button></li>`;
 }
 
+/** Row of the "Libro de movimientos" notebook (the client drawer keeps the compact movementRow). */
+function bookRow(m) {
+  const coupon = m.couponId ? S.coupons.find(c => c.id === m.couponId) : null;
+  return html`<li class="nb-row" role="row">
+    <div class="nb-cell nb-date" role="cell">${fmtDate(m.date)}</div>
+    <div class="nb-cell nb-main" role="cell"><button class="nb-open" data-act="mov-edit" data-id="${m.id}">${clientName(m.clientId)}</button></div>
+    <div class="nb-cell nb-detail" role="cell">${m.total === 0 ? "Pago a cuenta" : m.detail || "Venta"}${m.discountAmount ? html` <span class="chip coupon">${coupon ? coupon.code : "cupón"} −${fmtMoney(m.discountAmount)}</span>` : ""}</div>
+    <div class="nb-cell nb-total" role="cell">${m.total ? html`<span class="amt">${fmtMoney(m.total)}</span>` : html`<span class="muted nb-desk-only">—</span>`}</div>
+    <div class="nb-cell nb-paid" role="cell">${m.paid ? html`<span class="amt paid">+${fmtMoney(m.paid)}</span>` : html`<span class="muted nb-desk-only">—</span>`}</div>
+    <div class="nb-cell nb-actions" role="cell"><button class="btn ghost sm" data-act="mov-edit" data-id="${m.id}" aria-label="Editar movimiento de ${clientName(m.clientId)} del ${fmtDate(m.date)}">${icon("edit")} Editar</button></div>
+  </li>`;
+}
+
+const MOV_COLS = [
+  { label: "Fecha", cls: "nb-date" }, { label: "Clienta", cls: "nb-main" }, { label: "Detalle", cls: "nb-detail" },
+  { label: "Total", cls: "nb-total" }, { label: "Pagó", cls: "nb-paid" }, { label: "", cls: "nb-actions" }
+];
+
 export function vMovements() {
   const movs = filtered();
   const visible = movs.slice(0, S.filters.movLimit);
@@ -59,7 +78,6 @@ export function vMovements() {
   <header class="view-head">
     <h1 class="display-l">Movimientos</h1>
     <div class="head-actions">
-      ${exportButton("movimientos")}
       <button class="btn sale" data-act="sale-new">Anotar venta</button>
       <button class="btn pay" data-act="pay-new">Anotar pago</button>
     </div>
@@ -71,8 +89,11 @@ export function vMovements() {
       ${sortTrips(S.trips).reverse().map(v => html`<option value="${v.id}" ${S.filters.movTrip === v.id ? "selected" : ""}>${v.name}</option>`)}
     </select>
   </div>
-  <p class="small muted">${movs.length} movimientos</p>
-  <ul class="rows card flush" id="movList">${visible.map(m => movementRow(m))}</ul>
+  ${notebook({
+    title: "Libro de movimientos", kind: "movs", listId: "movList", cols: MOV_COLS,
+    meta: html`<span class="nb-count" id="movCount">${movs.length} movimientos</span>${exportButton("movimientos")}`,
+    rows: visible.map(bookRow)
+  })}
   ${movs.length > S.filters.movLimit ? html`<button class="btn ghost block" data-act="mov-more">Ver más (${movs.length - S.filters.movLimit} restantes)</button>` : ""}
   ${!movs.length ? html`<section class="empty"><p>No hay movimientos con ese filtro.</p></section>` : ""}`;
 }
@@ -83,7 +104,9 @@ onInput("mov-search", v => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     const movs = filtered();
-    mount($("#movList"), movs.slice(0, S.filters.movLimit).map(m => movementRow(m)));
+    mount($("#movList"), movs.slice(0, S.filters.movLimit).map(bookRow));
+    const n = $("#movCount");
+    if (n) n.textContent = movs.length + " movimientos";
   }, 120);
 });
 onInput("mov-trip", v => { S.filters.movTrip = v; S.filters.movLimit = 100; rerender(); });

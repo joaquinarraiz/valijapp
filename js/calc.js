@@ -435,3 +435,108 @@ export function validTransferAmount(value, balance) {
   const x = Math.round(Number(value) * 100) / 100;
   return Number.isFinite(x) && x > 0 && x <= num(balance) && x <= 10000000 ? x : null;
 }
+
+// ---------- Métricas (data prep for the Inicio charts; rendering lives in js/admin/charts.js) ----------
+const lastDayOf = ym => {
+  const [y, m] = ym.split("-").map(Number);
+  return ym + "-" + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0");
+};
+
+/** Last `n` calendar months ending in today's month, oldest first: ["2025-11", …, "2026-10"]. */
+export function lastMonths(n = 12, today = todayISO()) {
+  let [y, m] = today.slice(0, 7).split("-").map(Number);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.unshift(y + "-" + String(m).padStart(2, "0"));
+    m--; if (m === 0) { m = 12; y--; }
+  }
+  return out;
+}
+
+/** Sold / collected per month for the given months (oldest first). */
+export function salesByMonth(movements, months) {
+  const map = new Map(months.map(k => [k, { month: k, sold: 0, collected: 0 }]));
+  for (const m of movements) {
+    const s = m.date && map.get(m.date.slice(0, 7));
+    if (s) { s.sold += num(m.total); s.collected += num(m.paid); }
+  }
+  return months.map(k => map.get(k));
+}
+
+/**
+ * Total debt (sum of POSITIVE client balances, same formula as clientBalance) at the end of each month.
+ * Months oldest first; the current month is measured as of its last day (i.e. everything so far).
+ */
+export function debtAtMonthEnds(movements, months) {
+  const sorted = movements.filter(m => m.date).sort((a, b) => a.date.localeCompare(b.date));
+  const bal = new Map();
+  let i = 0;
+  return months.map(ym => {
+    const end = lastDayOf(ym);
+    for (; i < sorted.length && sorted[i].date <= end; i++) {
+      const m = sorted[i];
+      bal.set(m.clientId, (bal.get(m.clientId) || 0) + num(m.total) - num(m.paid));
+    }
+    let debt = 0;
+    for (const v of bal.values()) if (v > 0) debt += v;
+    return { month: ym, debt };
+  });
+}
+
+/** Clients whose FIRST movement falls in each month (oldest first). */
+export function newClientsByMonth(movements, months) {
+  const first = new Map();
+  for (const m of movements) {
+    if (!m.date) continue;
+    const f = first.get(m.clientId);
+    if (!f || m.date < f) first.set(m.clientId, m.date);
+  }
+  const map = new Map(months.map(k => [k, 0]));
+  for (const d of first.values()) { const k = d.slice(0, 7); if (map.has(k)) map.set(k, map.get(k) + 1); }
+  return months.map(k => ({ month: k, count: map.get(k) }));
+}
+
+/** Top `n` clients by total bought and by debt: [{ clientId, value }]. */
+export function topClients(movements, n = 10) {
+  const sums = [...clientSummaries(movements).values()];
+  return {
+    buyers: sums.filter(s => s.bought > 0).sort((a, b) => b.bought - a.bought).slice(0, n).map(s => ({ clientId: s.clientId, value: s.bought })),
+    debtors: sums.filter(s => s.debt > 0).sort((a, b) => b.debt - a.debt).slice(0, n).map(s => ({ clientId: s.clientId, value: s.debt }))
+  };
+}
+
+/**
+ * Per trip: how the collected money was split. partner1/partner2 = shares (incl. manual adjustments),
+ * business = what stays in the business ("sobró"), loans = reserved/returned for loans. Negative parts are 0.
+ */
+export function tripSplitSeries(data) {
+  return periodSummary(data).rows.map(({ trip, st }) => ({
+    name: trip.name, collected: st.collected,
+    partner1: Math.max(0, st.share1), partner2: Math.max(0, st.share2), business: Math.max(0, st.box), loans: Math.max(0, st.deducted)
+  }));
+}
+
+/** Clients by balance state and by app access. Clients without movements count as "al día". */
+export function clientStatusCounts(clients, movements) {
+  const sums = clientSummaries(movements);
+  const out = { owes: 0, clear: 0, credit: 0, withAccess: 0, withoutAccess: 0 };
+  for (const c of clients) {
+    const d = (sums.get(c.id) || { debt: 0 }).debt;
+    if (d > 0) out.owes++; else if (d < 0) out.credit++; else out.clear++;
+    if (c.userId) out.withAccess++; else out.withoutAccess++;
+  }
+  return out;
+}
+
+/** Active = bought within `days` (same rule as "Hace tiempo no compran"); never = no purchase at all. */
+export function activityCounts(clients, movements, days = 45, today = todayISO()) {
+  const sums = clientSummaries(movements);
+  const out = { active: 0, inactive: 0, never: 0 };
+  for (const c of clients) {
+    const last = (sums.get(c.id) || {}).last;
+    if (!last) out.never++;
+    else if (daysSince(last, today) < days) out.active++;
+    else out.inactive++;
+  }
+  return out;
+}

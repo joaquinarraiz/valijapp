@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   clientBalance, clientSummaries, tripStats, splitCollected, cashDetail, cashBalanceAfter, pendingLoans,
-  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, clientStatement, statementRange, adjustmentForTarget, partnerAdjustIn, withdrawnIn, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
+  couponDiscount, couponIsValid, dashboard, periodSummary, daysSince, sortCash, loanReserves, lastMonths, salesByMonth, debtAtMonthEnds, newClientsByMonth, topClients, tripSplitSeries, clientStatusCounts, activityCounts, clientStatement, statementRange, adjustmentForTarget, partnerAdjustIn, withdrawnIn, monthStats, monthlyHistory, monthLabel, pendingPayments, balanceWithPending, validTransferAmount, usedCouponIds, availableCoupons
 } from "../js/calc.js";
 import { convertLegacy, toLegacyState, parseMoney } from "../js/legacy.js";
 import { fmtMoney, fmtDate } from "../js/format.js";
@@ -371,6 +371,49 @@ test("statement presets use calendar months", () => {
   assert.deepEqual(statementRange("prev", "2026-03-05"), { from: "2026-02-01", to: "2026-02-28" });
   assert.deepEqual(statementRange("3m", "2026-01-15"), { from: "2025-11-01", to: "2026-01-15" });
   assert.deepEqual(statementRange("all", "2026-10-19", null), { from: "2026-10-19", to: "2026-10-19" });
+});
+
+test("métricas: months, sales, debt at month end, new clients", () => {
+  assert.deepEqual(lastMonths(3, "2026-01-15"), ["2025-11", "2025-12", "2026-01"]);
+  assert.equal(lastMonths(12, "2026-10-19").length, 12);
+  const mv = [
+    { clientId: 1, date: "2025-11-05", total: 1000, paid: 0 },
+    { clientId: 2, date: "2025-12-01", total: 500, paid: 500 },
+    { clientId: 1, date: "2025-12-31", total: 0, paid: 400 },
+    { clientId: 3, date: "2026-01-02", total: 0, paid: 300 },   // a favor: never counts as debt
+    { clientId: 2, date: "2026-01-20", total: 200, paid: 0 },
+    { clientId: 9, date: "2025-01-01", total: 50, paid: 0 }    // before the window, still counts in debt
+  ];
+  const months = lastMonths(3, "2026-01-25");
+  assert.deepEqual(salesByMonth(mv, months).map(x => [x.sold, x.collected]), [[1000, 0], [500, 900], [200, 300]]);
+  assert.deepEqual(debtAtMonthEnds(mv, months).map(x => x.debt), [1050, 650, 850]);
+  // the last value equals the current total debt (sum of positive balances)
+  const totalNow = [1, 2, 3, 9].map(id => clientBalance(mv, id)).filter(v => v > 0).reduce((a, b) => a + b, 0);
+  assert.equal(debtAtMonthEnds(mv, months).at(-1).debt, totalNow);
+  assert.deepEqual(newClientsByMonth(mv, months).map(x => x.count), [1, 1, 1]);
+});
+
+test("métricas: tops, split per trip, client states, activity", () => {
+  const mv = [
+    { clientId: 1, date: "2026-10-01", total: 9000, paid: 1000 },
+    { clientId: 2, date: "2026-07-01", total: 5000, paid: 5000 },
+    { clientId: 3, date: "2026-09-30", total: 0, paid: 700 }
+  ];
+  const t = topClients(mv, 10);
+  assert.deepEqual(t.buyers.map(x => [x.clientId, x.value]), [[1, 9000], [2, 5000]]);
+  assert.deepEqual(t.debtors.map(x => [x.clientId, x.value]), [[1, 8000]]);
+  const clients = [{ id: 1, userId: "u" }, { id: 2 }, { id: 3 }, { id: 4 }];
+  assert.deepEqual(clientStatusCounts(clients, mv), { owes: 1, clear: 2, credit: 1, withAccess: 1, withoutAccess: 3 });
+  assert.deepEqual(activityCounts(clients, mv, 45, "2026-10-19"), { active: 1, inactive: 1, never: 2 });
+  const tripsX = [{ id: "s", name: "SEP", startsOn: "2026-09-01", investment: 0 }];
+  const data = {
+    trips: tripsX, settings: { partner1Pct: 25, partner2Pct: 25 },
+    movements: [{ clientId: 1, date: "2026-09-02", total: 0, paid: 1000 }],
+    cash: [{ id: "p", kind: "PRESTAMO", person: "X", date: "2026-09-01", amount: 200 }]
+  };
+  const [row] = tripSplitSeries(data);
+  assert.deepEqual([row.loans, row.partner1, row.partner2, row.business], [200, 200, 200, 400]);
+  assert.equal(row.loans + row.partner1 + row.partner2 + row.business, row.collected);
 });
 
 console.log(`\n${passed} tests passed`);

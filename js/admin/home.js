@@ -8,6 +8,7 @@ import { go } from "./app.js";
 import { cashRow, cashSheet } from "./cash.js";
 import { migrationCard } from "./more.js";
 import { paymentsHomeCard } from "./payments.js";
+import { metricsSection } from "./charts.js";
 import { partnerCardSub } from "../partner-text.js";
 
 export function vHome() {
@@ -15,7 +16,8 @@ export function vHome() {
   const st = d.current;
   const month = monthStats(calcData(), todayISO().slice(0, 7)); // current calendar month (informative)
   const p1 = S.settings.partner1Name, p2 = S.settings.partner2Name;
-  const lastCash = [...S.cash].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 8);
+  // latest 5 cash rows: newest date first, same day by insertion order (newest first)
+  const lastCash = [...S.cash].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (Number(b.seq) || 0) - (Number(a.seq) || 0)).slice(0, 5);
   const notActivated = S.clients.filter(c => !c.userId).length;
   // money of the current trip still reserved for open loans (the full breakdown lives in Caja & Socios)
   const openReserve = st ? Math.min(d.loanPool, st.deducted) : 0;
@@ -51,14 +53,16 @@ export function vHome() {
 
   <section class="card">
     <h2 class="h3">Retiros y préstamos</h2>
-    <p class="hint">Si alguno retira plata antes de tiempo, anotalo acá: se descuenta solo de lo que le queda por cobrar del período. Si alguien les presta plata para comprar más, anotala como préstamo y después la devolución. Mientras haya un préstamo sin devolver, nadie cobra su %: la devolución se descuenta de lo cobrado antes de repartir.</p>
+    <p class="hint">Si alguno retira plata antes de tiempo, anotalo acá: se descuenta de lo que le queda por cobrar del período. Si alguien les presta plata para comprar más, anotalo como préstamo: desde ese día, lo que se cobra primero se reserva para devolverlo y recién lo que sobra se reparte. Cuando lo devuelvan, anotá la devolución.</p>
     <div class="btn-row">
       <button class="btn ghost" data-act="cash-new" data-kind="RETIRO">Anotar retiro</button>
       <button class="btn ghost" data-act="cash-new" data-kind="PRESTAMO">Anotar préstamo</button>
       <button class="btn ghost" data-act="cash-new" data-kind="DEVOLUCION">Anotar devolución</button>
       <button class="btn ghost" data-act="go-caja">Ver la caja</button>
     </div>
-    ${lastCash.length ? html`<ul class="rows">${lastCash.map(c => cashRow(c, false))}</ul>` : html`<p class="muted small">Todavía no hay retiros ni préstamos anotados.</p>`}
+    ${lastCash.length ? html`<ul class="rows">${lastCash.map(c => cashRow(c, false))}</ul>
+      ${S.cash.length > lastCash.length ? html`<button class="btn ghost block see-all" data-act="go-caja-list">Ver todos (${S.cash.length})</button>` : ""}`
+      : html`<p class="muted small">Todavía no hay retiros ni préstamos anotados.</p>`}
   </section>
 
   <div class="two-col">
@@ -86,9 +90,15 @@ export function vHome() {
       <button class="btn ghost" data-act="see-not-activated">Ver la lista</button>
     </section>
   </div>
+  ${metricsSection()}
   <p class="small muted center">Socios: ${partnerName("J")} ${S.settings.partner1Pct}% · ${partnerName("M")} ${S.settings.partner2Pct}%</p>`;
 }
 
 onAction("go-caja", () => { S.cashTab = "caja"; go("caja"); });
+onAction("go-caja-list", () => {
+  S.cashTab = "caja"; go("caja");
+  const list = document.getElementById("cashMovs");
+  if (list) list.scrollIntoView({ block: "start" });
+});
 onAction("cash-new", d => cashSheet(null, d.kind));
 onAction("see-not-activated", () => { S.filters.clientChip = "sinacceso"; go("clientas"); });

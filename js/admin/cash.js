@@ -102,7 +102,7 @@ function vBox() {
       <button class="btn ghost" type="submit">Guardar</button>
     </form>
   </div>
-  <section class="card flush">
+  <section class="card flush" id="cashMovs">
     <h2 class="h3 pad">Movimientos de la caja</h2>
     <p class="hint pad">Cada vez que anotás un pago de una clienta la caja sube sola. Acá solo van los movimientos de plata que no son ventas.</p>
     ${movs.length ? html`<ul class="rows">${movs.map(c => cashRow(c))}</ul>` : html`<p class="muted pad">Todavía no hay movimientos anotados en este período.</p>`}

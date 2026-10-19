@@ -495,3 +495,146 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .radio-chip input { position: absolute; opacity: 0; pointer-events: none; }
 .radio-chip:has(input:checked) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .radio-chip:has(input:focus-visible) { outline: 3px solid var(--denim); outline-offset: 2px; }
+/* ---------- notebook ("cuaderno") lists: Clientas, Movimientos ---------- */
+.notebook {
+  --ring-w: 44px; --rule: color-mix(in srgb, var(--denim) 16%, transparent);
+  --margin: color-mix(in srgb, var(--fucsia) 40%, transparent);
+  position: relative; margin: 0 0 16px; padding-left: var(--ring-w);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px 18px 18px 6px; box-shadow: var(--shadow);
+}
+/* binding strip with a column of ring holes, 30px pitch */
+.notebook::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: var(--ring-w); border-radius: 6px 0 0 6px;
+  background:
+    radial-gradient(circle at 50% 15px, var(--paper) 5.5px, color-mix(in srgb, var(--ink) 35%, transparent) 6.5px, transparent 7.5px) 0 0 / 100% 30px repeat-y,
+    color-mix(in srgb, var(--denim) 10%, var(--surface-2));
+  border-right: 1px solid var(--line);
+}
+/* faint red margin line */
+.notebook::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(var(--ring-w) + 10px); width: 2px; background: var(--margin); pointer-events: none; }
+.nb-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px 10px 24px; border-bottom: 2px solid var(--margin); }
+.nb-title { margin: 0; font: 700 clamp(1.7rem, 4vw, 2.2rem)/1 "Caveat", "Segoe Script", cursive; color: var(--denim); letter-spacing: .01em; }
+.nb-meta { display: flex; align-items: center; gap: 10px; }
+.nb-count { font: 600 .9rem var(--body); color: var(--muted); }
+.nb-page { position: relative; display: flex; }
+.nb-table { flex: 1; min-width: 0; }
+.nb-rows { list-style: none; margin: 0; padding: 0; }
+.nb-row, .nb-cols { display: grid; align-items: center; column-gap: 12px; padding: 0 14px 0 24px; }
+.nb-row { position: relative; min-height: 56px; border-bottom: 1px solid var(--rule); scroll-margin-top: 64px; }
+.nb-row:hover { background: color-mix(in srgb, var(--tag) 10%, transparent); }
+.nb-row:focus-within { background: color-mix(in srgb, var(--denim) 8%, transparent); }
+.nb-cell { min-width: 0; overflow-wrap: anywhere; padding: 8px 0; }
+.nb-sub { display: block; font-size: .82rem; color: var(--muted); font-weight: 500; }
+/* the name button covers the whole row (row click), other controls sit above it */
+.nb-open { appearance: none; border: 0; background: none; padding: 0; color: var(--ink); font: 700 1rem var(--body); text-align: left; cursor: pointer; }
+.nb-open::after { content: ""; position: absolute; inset: 0; }
+.nb-open:focus-visible { outline: none; }
+.nb-open:focus-visible::after { outline: 3px solid var(--denim); outline-offset: -3px; border-radius: 4px; }
+.nb-actions, .nb-tel a, .nb-row .chip { position: relative; z-index: 1; }
+.nb-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.nb-link { color: var(--ink); text-decoration-color: var(--rule); }
+.nb-tel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-wa { color: var(--wa); }
+.nb-amount, .nb-total, .nb-paid { text-align: right; }
+.nb-cols { display: none; }
+
+/* phones: compact two-line rows, same notebook look */
+.nb-clients .nb-row { grid-template-columns: 1fr auto; }
+.nb-clients .nb-tel, .nb-clients .nb-last, .nb-clients .nb-access, .nb-clients .nb-actions { display: none; }
+.nb-movs .nb-row { grid-template-columns: 62px 1fr auto; grid-template-areas: "date name total" "date detail paid"; row-gap: 0; }
+.nb-movs .nb-row .nb-cell { padding: 2px 0; }
+.nb-movs .nb-row { padding-top: 8px; padding-bottom: 8px; }
+.nb-movs .nb-date { grid-area: date; font-size: .8rem; color: var(--muted); font-weight: 600; }
+.nb-movs .nb-main { grid-area: name; }
+.nb-movs .nb-detail { grid-area: detail; font-size: .85rem; color: var(--muted); }
+.nb-movs .nb-total { grid-area: total; }
+.nb-movs .nb-paid { grid-area: paid; }
+.nb-movs .nb-actions { display: none; }
+.nb-desk-only { display: none; }
+.nb-az { display: none; }
+
+@media (min-width: 900px) {
+  .nb-phone-only { display: none; }
+  .nb-desk-only { display: inline; }
+  .nb-cols {
+    display: grid; position: sticky; top: 0; z-index: 3; min-height: 40px;
+    background: color-mix(in srgb, var(--surface-2) 92%, var(--denim)); border-bottom: 2px solid var(--rule);
+    font: 700 .74rem var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  }
+  .nb-clients .nb-row, .nb-clients .nb-cols { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.6fr) minmax(0, 1fr) 106px minmax(0, 1fr) 112px; }
+  .nb-clients .nb-tel, .nb-clients .nb-last, .nb-clients .nb-access, .nb-clients .nb-actions { display: block; }
+  .nb-clients .nb-actions { display: flex; }
+  .nb-movs .nb-row, .nb-movs .nb-cols { grid-template-columns: 84px minmax(0, 1.4fr) minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) 100px; grid-template-areas: none; }
+  .nb-movs .nb-row > .nb-cell, .nb-movs .nb-cols > .nb-cell { grid-area: auto; }
+  .nb-movs .nb-row .nb-cell { padding: 8px 0; }
+  .nb-movs .nb-row .nb-detail { color: var(--ink); font-size: .92rem; }
+  .nb-movs .nb-actions { display: flex; }
+  /* A–Z index tabs on the right edge (Clientas) */
+  .nb-az {
+    display: flex; flex-direction: column; gap: 2px; position: sticky; top: 8px; align-self: flex-start;
+    margin: 8px -14px 8px 6px; padding: 6px 0; z-index: 4;
+  }
+  .nb-az button {
+    appearance: none; border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0; cursor: pointer;
+    min-width: 34px; padding: 3px 8px; font: 700 .78rem var(--body); color: var(--ink); text-align: left;
+    background: color-mix(in srgb, var(--tag) 45%, var(--surface));
+  }
+  .nb-az button:nth-child(odd) { background: color-mix(in srgb, var(--mint) 22%, var(--surface)); }
+  .nb-az button:first-child { background: var(--denim); color: #fff; font-size: .7rem; }
+  .nb-az button:hover, .nb-az button:focus-visible { transform: translateX(3px); }
+}
+@media (prefers-reduced-motion: reduce) { .nb-az button:hover, .nb-az button:focus-visible { transform: none; } }
+@media (max-width: 899px) { .notebook { --ring-w: 30px; } .nb-row, .nb-head { padding-left: 20px; } .notebook::after { left: calc(var(--ring-w) + 8px); } }
+/* ---------- Métricas (inline SVG charts on Inicio) ----------
+   Series steps validated with the dataviz validator (light on #FFFFFF, dark on #1C1A37):
+   split stack orange→violet→mint→gold passes CVD/normal-vision floors in both modes;
+   two-state charts pair one hue with a neutral gray and always carry labels. */
+.metrics { --viz-sold: #3346A8; --viz-paid: #14876A; --viz-debt: #D23A70; --viz-p1: #6E52E8; --viz-p2: #DB6F33;
+  --viz-biz: #14876A; --viz-loan: #C99318; --viz-neutral: #B9B6CF; --viz-faint: #E3E1F0; --viz-grid: #ECEBF4; margin-top: 8px; }
+@media (prefers-color-scheme: dark) {
+  .metrics { --viz-sold: #3987E5; --viz-paid: #199E70; --viz-debt: #D55181; --viz-p1: #9085E9; --viz-p2: #D95926;
+    --viz-biz: #199E70; --viz-loan: #C98500; --viz-neutral: #5B587F; --viz-faint: #34315C; --viz-grid: #2A2850; }
+}
+.viz-grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 900px) { .viz-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.viz-card { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.viz-card .h3 { margin-bottom: 0; }
+.viz-sub { margin: 0 0 4px; }
+.viz-svg { width: 100%; height: auto; display: block; overflow: visible; font-family: var(--body); }
+.viz-tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.viz-name { fill: var(--ink); }
+.viz-value { fill: var(--ink); font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.viz-gridline { stroke: var(--viz-grid); stroke-width: 1; }
+.viz-axis { stroke: var(--line); stroke-width: 1; }
+.viz-mark { transition: opacity .15s; }
+.viz-svg:hover .viz-mark { opacity: .55; }
+.viz-svg .viz-mark:hover, .viz-svg g:hover .viz-mark { opacity: 1; }
+.viz-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.viz-area { opacity: .1; }
+.viz-dot { stroke: var(--surface); stroke-width: 2; }
+.viz-hit { fill: transparent; }
+.viz-hit:hover { fill: color-mix(in srgb, var(--ink) 8%, transparent); }
+/* series roles */
+.viz-s-sold { fill: var(--viz-sold); background: var(--viz-sold); stroke: var(--viz-sold); }
+.viz-s-paid { fill: var(--viz-paid); background: var(--viz-paid); stroke: var(--viz-paid); }
+.viz-s-debt { fill: var(--viz-debt); background: var(--viz-debt); stroke: var(--viz-debt); }
+.viz-s-p1 { fill: var(--viz-p1); background: var(--viz-p1); }
+.viz-s-p2 { fill: var(--viz-p2); background: var(--viz-p2); }
+.viz-s-biz { fill: var(--viz-biz); background: var(--viz-biz); }
+.viz-s-loan { fill: var(--viz-loan); background: var(--viz-loan); }
+.viz-s-neutral { fill: var(--viz-neutral); background: var(--viz-neutral); }
+.viz-s-faint { fill: var(--viz-faint); background: var(--viz-faint); }
+.viz-line.viz-s-debt { fill: none; }
+/* legend: text stays in text colours; the swatch carries identity */
+.viz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .82rem; color: var(--ink); }
+.viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.viz-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.viz-pct { display: grid; gap: 6px; margin: 4px 0 10px; }
+.viz-pct-title { font-weight: 700; font-size: .9rem; }
+.viz-pct-bar { display: flex; gap: 2px; height: 16px; border-radius: 6px; overflow: hidden; background: var(--surface); }
+.viz-pct-bar span { min-width: 4px; }
+.viz-table summary { cursor: pointer; font-size: .82rem; color: var(--muted); font-weight: 600; }
+.viz-table table { font-size: .82rem; }
+.viz-empty { color: var(--muted); padding: 24px 0; text-align: center; border: 2px dashed var(--line); border-radius: 12px; margin: 0; }
+.see-all { margin-top: 8px; }
+#cashMovs { scroll-margin-top: 72px; }
