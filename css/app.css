@@ -470,6 +470,21 @@ tr.total td { font-weight: 800; background: var(--surface-2); }
 .stat.trip { border-top-color: var(--tag-deep); }
 .stat.month-sold .stat-value { color: var(--denim); }
 .stat.month-paid .stat-value { color: var(--mint-ink); }
+/* stat cards drawn as little suitcases: handle on top (card colour), two faint straps, two wheels.
+   Pseudo-elements are absolutely positioned so they never become subgrid items. */
+.stats { row-gap: 22px; padding-top: 12px; }
+.stats .stat { --tone: var(--line); position: relative; border-radius: 16px;
+  background-image: linear-gradient(to right,
+    transparent 24%, color-mix(in srgb, var(--line) 55%, transparent) 24% calc(24% + 3px), transparent calc(24% + 3px) 76%,
+    color-mix(in srgb, var(--line) 55%, transparent) 76% calc(76% + 3px), transparent calc(76% + 3px)); }
+.stats .stat::before { content: ""; position: absolute; top: -13px; left: 50%; width: 42px; height: 13px; transform: translateX(-50%);
+  border: 3px solid var(--tone); border-bottom: 0; border-radius: 10px 10px 0 0; }
+.stats .stat::after { content: ""; position: absolute; bottom: -8px; left: 16px; right: 16px; height: 9px;
+  background: radial-gradient(circle, var(--muted) 3.5px, transparent 4.5px) left / 10px 9px no-repeat,
+              radial-gradient(circle, var(--muted) 3.5px, transparent 4.5px) right / 10px 9px no-repeat; }
+.stat.owes { --tone: var(--fucsia); } .stat.paid, .stat.month-paid { --tone: var(--mint); }
+.stat.p1 { --tone: var(--p1); } .stat.p2 { --tone: var(--p2); }
+.stat.month-sold { --tone: var(--denim); } .stat.trip { --tone: var(--tag-deep); }
 /* "Descargar" menu */
 .dl { position: relative; display: inline-block; }
 .dl-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 180px; display: grid; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
