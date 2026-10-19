@@ -201,6 +201,12 @@ label.check input { width: 20px; min-height: 20px; height: 20px; accent-color: v
 .stat-label { font-size: .8rem; color: var(--muted); font-weight: 600; }
 .stat-value { font: 800 clamp(1.15rem, 4.6vw, 1.4rem)/1.15 var(--display); letter-spacing: -.02em; margin-top: 4px; }
 .stat-sub { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+/* cards in a row share label / value / sub rows, so values line up even when a label wraps */
+@supports (grid-template-rows: subgrid) {
+  .stats .stat { display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 4px; align-content: start; }
+  .stats .stat-label { align-self: end; }
+  .stats .stat-value, .stats .stat-sub { margin-top: 0; }
+}
 .card .stat, .sheet .stat { background: var(--surface-2); }
 
 /* ---------- lists ---------- */
